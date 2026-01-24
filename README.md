@@ -1,21 +1,73 @@
 # Domain Redirector
 
-An AWS-native service that manages HTTP redirects for multiple domains using CloudFront and CloudFront Functions. Configuration is managed via a simple YAML file, making it accessible to non-developers.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.4-blue.svg)](https://www.typescriptlang.org/)
+[![AWS CDK](https://img.shields.io/badge/AWS%20CDK-2.170+-orange.svg)](https://aws.amazon.com/cdk/)
+[![Node.js](https://img.shields.io/badge/Node.js-20+-green.svg)](https://nodejs.org/)
+[![Security: cdk-nag](https://img.shields.io/badge/Security-cdk--nag-blueviolet.svg)](https://github.com/cdklabs/cdk-nag)
+[![AWS Well-Architected](https://img.shields.io/badge/AWS-Well--Architected-FF9900.svg)](https://aws.amazon.com/architecture/well-architected/)
 
-## Overview
+**Manage HTTP redirects for multiple domains with a simple YAML file.**
 
-This service reads from a YAML configuration file and automatically provisions **one CloudFront distribution per domain**, each with:
+An AWS-native service that provisions CloudFront distributions and CloudFront Functions to handle domain redirects at the edge. Configuration-driven, fully automated, and built with security best practices.
 
-- **CloudFront Distribution** — Dedicated distribution for each source domain
-- **ACM Certificate** — Single-domain certificate (no complex multi-domain management)
-- **CloudFront Function** — One function per destination target (all domains redirecting to the same target share a function)
-- **Route 53 Records** — A/AAAA records pointing each domain to its distribution
+---
 
-**Requirement:** Source domains must already have a hosted zone in Route 53. This service creates DNS records in existing hosted zones — it does not register domains or create hosted zones.
+## Features
 
-Changes to the configuration file trigger automatic deployment via AWS CodePipeline and CodeBuild.
+- **YAML-based configuration** - Add domains by editing a simple config file
+- **Automatic deployment** - Push to `main` and resources are provisioned via CodePipeline
+- **Edge-based redirects** - Sub-millisecond response times using CloudFront Functions
+- **Wildcard support** - Redirect `*.example.com` to catch all subdomains
+- **Path & query preservation** - `old.com/page?ref=x` redirects to `new.com/page?ref=x`
+- **One distribution per domain** - Isolated, predictable, no certificate juggling
+- **Security hardened** - cdk-nag validated, IAM least privilege, encrypted artifacts
 
-## Architecture
+---
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [How It Works](#how-it-works)
+- [Configuration](#configuration)
+- [Setup Guide](#setup-guide)
+- [Project Structure](#project-structure)
+- [Security](#security)
+- [AWS Resources & Costs](#aws-resources--costs)
+- [Validation & Testing](#validation--testing)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## Quick Start
+
+### For Non-Developers (Editing Redirects)
+
+1. Open `redirects.yaml` in GitHub
+2. Add your domain under the appropriate target
+3. Commit to `main` branch
+4. Deployment happens automatically
+
+```yaml
+redirects:
+  - target: "https://www.example.com"
+    type: permanent
+    domains:
+      - old-domain.com
+      - legacy-site.com    # Add new domains here
+```
+
+### For Developers (Initial Setup)
+
+See the full [Setup Guide](#setup-guide) below.
+
+---
+
+## How It Works
+
+### Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -24,11 +76,8 @@ Changes to the configuration file trigger automatic deployment via AWS CodePipel
 │   redirects.yaml  ───▶  CodePipeline  ───▶  CodeBuild                   │
 │   (edit this)           (on push)           │                            │
 │                                             ├──▶  Validate YAML          │
-│                                             │     (syntax, domains, URLs)│
 │                                             ├──▶  CDK Deploy             │
-│                                             │     (provision resources)  │
 │                                             └──▶  Smoke Tests            │
-│                                                   (verify redirects)     │
 └─────────────────────────────────────────────────────────────────────────┘
                                           │
                                           ▼
@@ -38,7 +87,7 @@ Changes to the configuration file trigger automatic deployment via AWS CodePipel
 │  CloudFront Functions (one per destination):                            │
 │  ┌──────────────────────────────────────────────────────────────────┐   │
 │  │  redirect-to-brand-a           →  https://www.brand-a.com        │   │
-│  │  redirect-to-brand-a-acquired  →  https://www.brand-a.com/acquired│   │
+│  │  redirect-to-brand-a-acquired  →  https://www.brand-a.com/acquired│  │
 │  └──────────────────────────────────────────────────────────────────┘   │
 │                                                                          │
 │  Per-domain resources:                                                   │
@@ -48,18 +97,8 @@ Changes to the configuration file trigger automatic deployment via AWS CodePipel
 │  │  │  CloudFront  │  │     ACM      │  │   Route 53   │              │ │
 │  │  │ Distribution │──│ Certificate  │  │   A/AAAA     │              │ │
 │  │  └──────┬───────┘  └──────────────┘  └──────────────┘              │ │
-│  │         │                                                           │ │
 │  │         └──────────▶  redirect-to-brand-a function                  │ │
 │  └────────────────────────────────────────────────────────────────────┘ │
-│                                                                          │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │  *.old-brand.com  (wildcard — same pattern, same function)          │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-│                                                                          │
-│  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │  acquired-company.com  →  redirect-to-brand-a-acquired              │ │
-│  └────────────────────────────────────────────────────────────────────┘ │
-│                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -69,69 +108,33 @@ This architecture creates a dedicated CloudFront distribution for each source do
 
 | Approach | Certificate Complexity | Scaling |
 |----------|------------------------|---------|
-| Single distribution, multi-domain certs | Complex (max 100 SANs per cert, must track which domain is on which cert, rebuild certs when domains change) | Hits limits quickly |
-| **One distribution per domain** | Simple (1 domain = 1 cert, add/remove domains independently) | Linear, predictable |
+| Single distribution, multi-domain certs | Complex (max 100 SANs per cert, must track which domain is on which cert) | Hits limits quickly |
+| **One distribution per domain** | Simple (1 domain = 1 cert, add/remove independently) | Linear, predictable |
 
-Benefits:
-- **No certificate juggling** — each domain gets its own ACM certificate
-- **Isolated changes** — adding domain #51 doesn't touch domains 1-50
-- **Clean removal** — deleting a domain removes only its resources
-- **Incremental deploys** — CDK only creates/updates changed resources
+**Benefits:**
+- **No certificate juggling** - Each domain gets its own ACM certificate
+- **Isolated changes** - Adding domain #51 doesn't touch domains 1-50
+- **Clean removal** - Deleting a domain removes only its resources
+- **Incremental deploys** - CDK only creates/updates changed resources
 
-### How the Redirect Works
+### The Redirect Function
 
-Each unique destination target gets its own CloudFront Function. The function is simple—it only needs to know its target URL and redirect type:
+Each unique destination target gets its own CloudFront Function:
 
 ```javascript
 // Auto-generated: redirect-to-brand-a.js
-var defined = {
-  target: "https://www.brand-a.com",
-  statusCode: 301,
-  preservePath: true,
-  preserveQuery: true
-};
-
 function handler(event) {
-  var url = defined.target;
-  if (defined.preservePath) {
-    url += event.request.uri;
-  }
-  if (defined.preserveQuery) {
-    var qs = Object.keys(event.request.querystring)
-      .map(function(k) { return k + "=" + event.request.querystring[k].value; })
-      .join("&");
-    if (qs) url += "?" + qs;
-  }
+  var url = "https://www.brand-a.com";
+  url += event.request.uri;  // Preserve path
+  // ... query string handling
   return {
-    statusCode: defined.statusCode,
+    statusCode: 301,
     headers: { location: { value: url } }
   };
 }
 ```
 
-Distributions are associated with the appropriate function based on their target. For example:
-- `old-brand.com` and `*.old-brand.com` both use `redirect-to-brand-a` function
-- `acquired-company.com` uses `redirect-to-brand-a-acquired` function (different target path)
-
-**Benefits of one function per destination:**
-- **Simpler function code** — No host header lookup or mapping table needed
-- **Clear separation** — Each function has a single responsibility
-- **Easier debugging** — Function name tells you exactly what it does
-- **Independent updates** — Changing brand-a's target doesn't touch brand-b's function
-
-## Quick Start
-
-### For Non-Developers (Editing Redirects)
-
-1. Open `redirects.yaml` in GitHub
-2. Find the appropriate redirect group or create a new one
-3. Add your domain to the `domains` list
-4. Commit to `main` branch
-5. Deployment happens automatically
-
-### For Developers (Initial Setup)
-
-See [Setup Guide](#setup-guide) below.
+---
 
 ## Configuration
 
@@ -147,140 +150,44 @@ redirects:
       - old-brand.com
       - "*.old-brand.com"    # Wildcard catches all subdomains
 
-  # Acquired company domains → landing page (no path preservation)
+  # Acquired company → landing page (no path preservation)
   - target: "https://www.brand-a.com/acquired"
     type: permanent
-    description: "Acquired company domains"
     preservePath: false
     domains:
       - acquired-company.com
-      - "*.acquired-company.com"
 
 settings:
   preservePath: true    # Default: old.com/page → target.com/page
   preserveQuery: true   # Default: old.com?ref=x → target.com?ref=x
 ```
 
-### Redirect Types
+### Configuration Reference
 
-| Type | HTTP Code | Use Case |
-|------|-----------|----------|
-| `permanent` | 301 | Domain is retired forever (recommended) |
-| `temporary` | 302 | Rare — only if domain may return to active use |
-
-Most redirects should be `permanent`. This signals to browsers and search engines that the domain is retired and transfers SEO value to the target.
-
-### Path and Query Preservation
-
-By default, redirects preserve the original path and query string:
-- `old.com/page?ref=123` → `target.com/page?ref=123`
-
-You can override this per redirect group:
-
-```yaml
-  - target: "https://www.brand-a.com/landing"
-    preservePath: false   # old.com/anything → target.com/landing
-    preserveQuery: false  # Query params are dropped
-    domains: [...]
-```
-
-| Setting | Default | Effect |
-|---------|---------|--------|
-| `preservePath` | `true` | Appends original path to target |
-| `preserveQuery` | `true` | Appends original query string to target |
-
-Per-rule settings override the global `settings` values.
-
-### Adding a New Domain
-
-```yaml
-# Just add the domain under the appropriate target
-domains:
-  - existing-domain.com
-  - new-domain.com        # ← Add here
-```
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `target` | Yes | - | Destination URL (must be HTTPS) |
+| `type` | Yes | - | `permanent` (301) or `temporary` (302) |
+| `domains` | Yes | - | Array of source domains |
+| `description` | No | - | Documentation comment |
+| `preservePath` | No | `true` | Append original path to target |
+| `preserveQuery` | No | `true` | Append original query string |
+| `active` | No | `true` | Set `false` to disable without removing |
+| `skipTest` | No | - | Domains to skip in smoke tests |
 
 ### Wildcard Domains
 
 Use wildcards to catch all subdomains:
 
 ```yaml
-  - target: "https://www.brand-a.com"
-    domains:
-      - old-brand.com
-      - "*.old-brand.com"   # Catches any subdomain
+domains:
+  - old-brand.com        # Matches: old-brand.com
+  - "*.old-brand.com"    # Matches: www.old-brand.com, mail.old-brand.com, etc.
 ```
 
-**Important:** Wildcards don't match the apex domain. For full coverage, include both:
-- `old-brand.com` — matches `old-brand.com`
-- `*.old-brand.com` — matches `www.old-brand.com`, `mail.old-brand.com`, `anything.old-brand.com`
+**Note:** Wildcards don't match the apex domain. Include both for full coverage.
 
-**How it works:**
-- ACM issues a wildcard certificate (`*.old-brand.com`)
-- CloudFront accepts the wildcard as a CNAME
-- Route 53 creates a wildcard A/AAAA record
-
-**Use case:** Defensive domain strategy — redirect any subdomain, including ones you haven't anticipated, without listing each explicitly.
-
-### Creating a New Redirect Group
-
-```yaml
-redirects:
-  # ... existing groups ...
-
-  # Add a new group
-  - target: "https://www.new-destination.com"
-    type: permanent
-    description: "Describe what these domains are for"
-    domains:
-      - domain-one.com
-      - domain-two.com
-```
-
-### Disabling a Redirect
-
-Use the `active` field to disable a redirect without removing it from config:
-
-```yaml
-  - target: "https://www.brand-a.com"
-    active: false   # Disabled - no resources deployed
-    description: "Temporarily disabled for testing"
-    domains:
-      - old-brand.com
-```
-
-| `active` Value | Behavior |
-|----------------|----------|
-| `true` (default) | Resources are created/maintained |
-| `false` | Resources are not created; existing resources are removed |
-
-## Project Structure
-
-```
-redirector/
-├── README.md                   # This file
-├── redirects.yaml              # Redirect configuration (edit this)
-├── buildspec.yml               # CodeBuild: validate, deploy, test
-└── cdk/
-    ├── package.json            # Single package for all TypeScript
-    ├── cdk.json
-    ├── tsconfig.json
-    ├── jest.config.js
-    ├── bin/
-    │   └── app.ts              # CDK app entry point
-    ├── lib/
-    │   ├── redirect-stack.ts   # Per-domain distributions + per-destination functions
-    │   ├── pipeline-stack.ts   # CodePipeline + CodeBuild infrastructure
-    │   └── config/
-    │       ├── types.ts        # TypeScript types for redirects.yaml
-    │       ├── parser.ts       # YAML parsing
-    │       └── validator.ts    # Pre-deployment validation
-    ├── scripts/
-    │   └── smoke-test.ts       # Post-deployment verification
-    └── test/
-        ├── validator.test.ts   # Validation unit tests
-        └── redirect-stack.test.ts  # CDK stack tests
-```
+---
 
 ## Setup Guide
 
@@ -289,186 +196,132 @@ redirector/
 - AWS CLI configured with appropriate credentials
 - Node.js 20+
 - AWS CDK CLI (`npm install -g aws-cdk`)
-- GitHub repository with CodeStar Connection configured
-- **Source domains must have hosted zones in Route 53** — This service creates DNS records in existing hosted zones. Domains hosted elsewhere (GoDaddy, Cloudflare, etc.) must be migrated to Route 53 first.
+- GitHub repository with CodeStar Connection
+- **Source domains must have hosted zones in Route 53**
 
 ### Initial Deployment
 
-1. **Clone the repository**
-   ```bash
-   git clone <your-repo-url>
-   cd redirector
-   ```
+```bash
+# 1. Clone the repository
+git clone https://github.com/jonathanspiva/redirector.git
+cd redirector/cdk
 
-2. **Install dependencies**
-   ```bash
-   cd cdk
-   npm install
-   ```
+# 2. Install dependencies
+npm install
 
-3. **Configure AWS CodeStar Connection**
+# 3. Set environment variables
+export CDK_DEFAULT_ACCOUNT=<your-aws-account-id>
+export CDK_DEFAULT_REGION=us-east-1
+export GITHUB_CONNECTION_ARN=<your-codestar-connection-arn>
+export GITHUB_OWNER=<your-github-username>
+export GITHUB_REPO=<your-repo-name>
 
-   In AWS Console:
-   - Go to Developer Tools → Settings → Connections
-   - Create connection to GitHub
-   - Note the Connection ARN
+# 4. Bootstrap CDK (first time only)
+npx cdk bootstrap
 
-4. **Set environment variables**
-   ```bash
-   export CDK_DEFAULT_ACCOUNT=<your-aws-account-id>
-   export CDK_DEFAULT_REGION=us-east-1
-   export GITHUB_CONNECTION_ARN=<your-codestar-connection-arn>
-   export GITHUB_OWNER=<your-github-username>
-   export GITHUB_REPO=<your-repo-name>
-   ```
+# 5. Deploy the pipeline
+npx cdk deploy PipelineStack
 
-5. **Bootstrap CDK (first time only)**
-   ```bash
-   npx cdk bootstrap
-   ```
+# 6. Deploy the redirects
+npx cdk deploy RedirectStack
+```
 
-6. **Deploy the pipeline**
-   ```bash
-   npx cdk deploy PipelineStack
-   ```
-
-7. **Deploy the redirects**
-   ```bash
-   npx cdk deploy RedirectStack
-   ```
-
-After initial setup, all future changes to `redirects.yaml` will be deployed automatically when pushed to `main`.
+After initial setup, changes to `redirects.yaml` deploy automatically when pushed to `main`.
 
 ### Using as a Submodule (Private Config)
 
-If you want to keep your redirect configuration private while using this open source tool, use the submodule approach:
+Keep your redirect configuration private while using this open source tool:
 
-1. **Create a private repository** for your configuration:
-   ```bash
-   mkdir my-redirects && cd my-redirects
-   git init
-   ```
+```bash
+# Create a private repository
+mkdir my-redirects && cd my-redirects
+git init
 
-2. **Add this repo as a submodule:**
-   ```bash
-   git submodule add https://github.com/jonathanspiva/redirector.git tool
-   ```
+# Add this repo as a submodule
+git submodule add https://github.com/jonathanspiva/redirector.git tool
 
-3. **Create your private `redirects.yaml`** in the root:
-   ```yaml
-   # my-redirects/redirects.yaml
-   redirects:
-     - target: "https://www.mycompany.com"
-       type: permanent
-       domains:
-         - old-domain.com
-   settings:
-     preservePath: true
-     preserveQuery: true
-   ```
-
-4. **Create a wrapper `package.json`:**
-   ```json
-   {
-     "name": "my-redirects",
-     "scripts": {
-       "install": "cd tool/cdk && npm install",
-       "test": "cd tool/cdk && npm test",
-       "deploy": "cd tool/cdk && npx cdk deploy RedirectStack",
-       "validate": "cd tool/cdk && npm run validate"
-     }
-   }
-   ```
-
-5. **Deploy:**
-   ```bash
-   npm install
-   npm run deploy
-   ```
+# Create your private redirects.yaml
+cat > redirects.yaml << 'EOF'
+redirects:
+  - target: "https://www.mycompany.com"
+    type: permanent
+    domains:
+      - old-domain.com
+settings:
+  preservePath: true
+  preserveQuery: true
+EOF
+```
 
 **Directory structure:**
 ```
 my-redirects/           # Your private repo
-├── redirects.yaml      # Your private config (auto-detected)
+├── redirects.yaml      # Your private config
 ├── package.json        # Wrapper scripts
 └── tool/               # Submodule (this public repo)
-    ├── cdk/
-    └── ...
 ```
 
-**Updating the tool:**
-```bash
-git submodule update --remote tool
-git add tool
-git commit -m "Update redirector tool"
+---
+
+## Project Structure
+
+```
+redirector/
+├── README.md                   # This file
+├── LICENSE                     # MIT License
+├── redirects.yaml              # Redirect configuration (edit this)
+├── buildspec.yml               # CodeBuild: validate, deploy, test
+└── cdk/
+    ├── package.json
+    ├── bin/
+    │   └── app.ts              # CDK app entry point
+    ├── lib/
+    │   ├── redirect-stack.ts   # Per-domain distributions
+    │   ├── pipeline-stack.ts   # CI/CD infrastructure
+    │   └── config/
+    │       ├── types.ts        # TypeScript types
+    │       ├── parser.ts       # YAML parsing
+    │       └── validator.ts    # Pre-deployment validation
+    ├── scripts/
+    │   └── smoke-test.ts       # Post-deployment verification
+    └── test/                   # Jest test suites
 ```
 
-## Resource Lifecycle
+---
 
-### How CDK Handles Changes
+## Security
 
-CDK tracks all resources it creates. When you modify `redirects.yaml`, the next deployment automatically:
+This project follows AWS security best practices and is validated against industry frameworks.
 
-| Change | CDK Action |
-|--------|------------|
-| Add a domain | Creates new distribution, certificate, Route 53 records |
-| Remove a domain | Deletes distribution, certificate, Route 53 records |
-| Set `active: false` | Same as removing — deletes all resources for that group |
-| Set `active: true` | Same as adding — creates all resources |
-| Change target URL | Updates existing distributions to use different function |
-| Add new target | Creates new CloudFront Function |
-| Remove last domain using a target | Deletes the orphaned CloudFront Function |
+### Security Features
 
-### Cleanup Behavior
+| Feature | Implementation |
+|---------|----------------|
+| **IaC Security Scanning** | [cdk-nag](https://github.com/cdklabs/cdk-nag) with AwsSolutionsChecks |
+| **IAM Least Privilege** | Policies scoped to specific resources, no `*` where avoidable |
+| **Encryption at Rest** | KMS encryption for pipeline artifacts with key rotation |
+| **Encryption in Transit** | TLS 1.2+ enforced on all CloudFront distributions |
+| **S3 Security** | Public access blocked, versioning enabled, SSL enforced |
+| **Dependency Scanning** | npm audit in CI, Dependabot for automated updates |
 
-When a domain is removed or disabled:
+### Compliance Alignment
 
-1. **Route 53 records** — Deleted immediately (DNS stops resolving)
-2. **CloudFront Distribution** — Disabled, then deleted (may take a few minutes)
-3. **ACM Certificate** — Deleted after distribution removal
-4. **CloudFront Function** — Deleted only if no other domains reference it
+- **[AWS Well-Architected Framework](https://aws.amazon.com/architecture/well-architected/)** - Security Pillar
+- **[CIS AWS Foundations Benchmark](https://www.cisecurity.org/benchmark/amazon_web_services)** - IAM and S3 controls
 
-**Important:** Removing a domain means requests to that domain will fail immediately after DNS propagation. Ensure the domain is no longer in use before removing.
+### Security Architecture
 
-### Orphan Prevention
+- All redirects use HTTPS
+- CloudFront enforces TLS 1.2+
+- No origin servers required (CloudFront Function responds at edge)
+- CodeBuild runs in isolated environment
+- No sensitive data stored (only domain-to-target mappings)
 
-CDK's declarative model ensures no orphaned resources:
-- If it's in `redirects.yaml` and `active: true` → resources exist
-- If it's not in `redirects.yaml` or `active: false` → resources are removed
+---
 
-You never need to manually clean up AWS resources.
+## AWS Resources & Costs
 
-## AWS Service Limits
-
-This architecture stays well within AWS defaults for typical usage (<250 domains).
-
-### CloudFront Distributions
-
-| Quota | Default | Notes |
-|-------|---------|-------|
-| Distributions per account | 200 | Request increase for more domains |
-
-For most users (under 200 domains), no quota increase is needed.
-
-### ACM Certificates
-
-| Quota | Default | Notes |
-|-------|---------|-------|
-| Certificates per account | 2,500 | More than sufficient |
-
-With one certificate per domain, you're well under this limit.
-
-### CloudFront Functions
-
-| Resource | Limit |
-|----------|-------|
-| Functions per account | 25 (default), increasable |
-| Code size | 10 KB |
-| Execution time | <1 ms typical |
-
-This service creates **one function per unique destination target**. With the default limit of 25 functions, you can have up to 25 different redirect targets. Request a quota increase if you need more destinations. Each function is tiny (~200 bytes), well under the 10KB limit.
-
-## AWS Resources Created
+### Resources Created
 
 **Per domain:**
 | Resource | Description |
@@ -480,17 +333,19 @@ This service creates **one function per unique destination target**. With the de
 **Per destination target:**
 | Resource | Description |
 |----------|-------------|
-| CloudFront Function | Redirect logic for that target (one function per unique destination) |
+| CloudFront Function | Redirect logic (~200 bytes each) |
 
-**Shared (one total):**
+**Shared (pipeline):**
 | Resource | Description |
 |----------|-------------|
 | CodePipeline | CI/CD pipeline |
 | CodeBuild | Build environment |
+| S3 Bucket | Encrypted artifact storage |
+| KMS Key | Artifact encryption (auto-rotating) |
 
 ### Cost Estimates
 
-CloudFront pricing is **usage-based, not per-distribution**, so costs scale with traffic, not domain count:
+CloudFront pricing is usage-based, not per-distribution:
 
 | Traffic Level | Monthly Requests | Estimated Cost |
 |---------------|------------------|----------------|
@@ -498,170 +353,64 @@ CloudFront pricing is **usage-based, not per-distribution**, so costs scale with
 | Medium | 1M | ~$3/month |
 | High | 10M | ~$12/month |
 
-Cost breakdown:
+**Breakdown:**
 - HTTPS requests: $0.01 per 10,000
 - CloudFront Function: $0.10 per 1M invocations
 - ACM Certificates: Free
 - CodePipeline: $1/month
 - Route 53: Included in hosted zone cost
 
-### Cost Tracking with Tags
+### Service Limits
 
-All resources are tagged for easy cost tracking in AWS Billing Dashboard and Cost Explorer.
+| Service | Default Limit | Notes |
+|---------|---------------|-------|
+| CloudFront Distributions | 200 | Request increase for more domains |
+| ACM Certificates | 2,500 | More than sufficient |
+| CloudFront Functions | 25 | One per destination target |
 
-**Default tags (applied automatically):**
+---
 
-| Tag | Value | Purpose |
-|-----|-------|---------|
-| `Project` | `domain-redirector` | Filter all redirector costs |
-| `ManagedBy` | `cdk` | Identify IaC-managed resources |
+## Validation & Testing
 
-**Optional tags** (configure in `cdk/lib/config.ts`):
+### Pre-Deployment Validation
 
-| Tag | Example | Purpose |
-|-----|---------|---------|
-| `Environment` | `production` | Separate prod/staging costs |
-| `CostCenter` | `marketing` | Internal accounting |
-| `Owner` | `platform-team` | Team responsibility |
-
-**How tags are applied in CDK:**
-
-```typescript
-import { Tags } from 'aws-cdk-lib';
-
-// In your stack constructor
-Tags.of(this).add('Project', 'domain-redirector');
-Tags.of(this).add('ManagedBy', 'cdk');
-```
-
-**To view costs by project:**
-
-1. **Activate cost allocation tags** (one-time setup):
-   - Go to AWS Billing → Cost Allocation Tags
-   - Find `Project` tag and click "Activate"
-   - Tags appear in reports within 24 hours
-
-2. **View in Cost Explorer**:
-   - Go to AWS Cost Explorer
-   - Group by → Tag → `Project`
-   - Filter by `Project` = `domain-redirector`
-
-## Pre-Deployment Validation
-
-Before any infrastructure changes, CodeBuild validates `redirects.yaml`:
-
-### YAML Structure
+Before infrastructure changes, CodeBuild validates `redirects.yaml`:
 
 | Check | Example Error |
 |-------|---------------|
 | Valid YAML syntax | `line 12: mapping values not allowed here` |
-| `redirects` is an array | `redirects must be an array` |
-| `settings` is an object | `settings must be an object` |
+| Target is HTTPS URL | `must be HTTPS URL, got "http://..."` |
+| Valid domain format | `invalid domain format "not a domain"` |
+| No duplicate domains | `duplicate domain "old.com"` |
+| Route 53 hosted zone exists | `no hosted zone found for "old.com"` |
 
-### Required Fields
+### Post-Deployment Smoke Tests
 
-Each redirect group must have:
-
-| Field | Required | Validation |
-|-------|----------|------------|
-| `target` | Yes | Must be a valid HTTPS URL |
-| `type` | Yes | Must be `permanent` or `temporary` |
-| `domains` | Yes | Must be a non-empty array |
-| `description` | No | String, for documentation |
-| `preservePath` | No | Boolean |
-| `preserveQuery` | No | Boolean |
-| `active` | No | Boolean (defaults to `true`) |
-| `skipTest` | No | Array of domains to skip in smoke tests |
-
-### Domain Validation
-
-| Check | Valid | Invalid |
-|-------|-------|---------|
-| Format | `example.com`, `sub.example.com` | `http://example.com`, `example` |
-| Wildcards | `*.example.com` | `*.*.example.com`, `*example.com` |
-| No duplicates | — | Same domain in multiple groups |
-| Characters | `my-site.com`, `site123.com` | `my_site.com`, `site!.com` |
-| Route 53 hosted zone | Zone exists for domain | No hosted zone found |
-
-**Important:** Each domain must have a hosted zone in Route 53. The validation checks that the hosted zone exists before deployment. If you need to redirect a domain hosted elsewhere, first migrate it to Route 53 or set up a hosted zone with NS records pointing to Route 53.
-
-### Target URL Validation
-
-| Check | Valid | Invalid |
-|-------|-------|---------|
-| HTTPS required | `https://example.com` | `http://example.com` |
-| Valid URL format | `https://example.com/path` | `example.com` |
-| No trailing slash | `https://example.com` | `https://example.com/` |
-
-### Example Validation Errors
+After each deployment, CodeBuild verifies redirects are working:
 
 ```
-Validation failed:
-
-  ✗ redirects[0].target: must be HTTPS URL, got "http://example.com"
-  ✗ redirects[1].domains[2]: invalid domain format "not a domain"
-  ✗ redirects[2].domains[0]: duplicate domain "old-brand.com" (also in redirects[0])
-  ✗ redirects[3].type: must be "permanent" or "temporary", got "perm"
-
-Deployment aborted. Fix errors in redirects.yaml and push again.
-```
-
-If validation fails, no infrastructure changes are made.
-
-## Post-Deployment Testing
-
-After each deployment, CodeBuild runs smoke tests to verify redirects are working:
-
-```bash
-# Example test output in CodeBuild logs
 Testing old-brand.com...
   ✓ HTTP 301 Moved Permanently
   ✓ Location: https://www.brand-a.com/
-Testing acquired-company.com...
-  ✓ HTTP 301 Moved Permanently
-  ✓ Location: https://www.brand-a.com/acquired
-All 2 redirect tests passed.
+All redirect tests passed.
 ```
 
-### What's Tested
+### Running Tests Locally
 
-For each active domain, the smoke test verifies:
+```bash
+cd cdk
 
-| Check | Expected |
-|-------|----------|
-| HTTP status code | Matches configured type (301 or 302) |
-| Location header | Starts with configured target URL |
-| HTTPS works | Certificate is valid and trusted |
+# Run all tests
+npm test
 
-### Handling New Domains
+# Run with coverage
+npm test -- --coverage
 
-New domains may not be immediately testable due to:
-- **DNS propagation** — Route 53 changes can take up to 60 seconds
-- **Certificate issuance** — ACM DNS validation typically takes 2-5 minutes
-
-The smoke test handles this by:
-1. Testing existing domains first (should pass immediately)
-2. Retrying new domains with exponential backoff (up to 5 minutes)
-3. Logging warnings for domains that aren't ready yet (doesn't fail the build)
-
-### Viewing Test Results
-
-Test output appears in:
-- **CodeBuild logs** — Full output in AWS Console → CodeBuild → Build history
-- **Pipeline status** — Green/red indicator in CodePipeline
-
-### Skipping Tests for Specific Domains
-
-Add `skipTest: true` to skip smoke testing for a domain (useful for domains with unusual DNS setups):
-
-```yaml
-  - target: "https://www.brand-a.com"
-    domains:
-      - old-brand.com
-      - external-dns-domain.com    # Managed outside Route 53
-    skipTest:
-      - external-dns-domain.com
+# Run specific test file
+npm test -- validator.test.ts
 ```
+
+---
 
 ## Troubleshooting
 
@@ -678,120 +427,58 @@ Add `skipTest: true` to skip smoke testing for a domain (useful for domains with
 3. Verify ACM certificate is issued (not pending)
 4. Allow up to 15 minutes for DNS propagation
 
-### Certificate Pending Validation
-
-ACM certificates require DNS validation. Ensure the validation CNAME records are created in Route 53.
-
-### Smoke Test Warnings
-
-If smoke tests show warnings for new domains:
-1. This is normal — DNS and certificates take a few minutes to propagate
-2. Wait 5 minutes and manually test with `curl -I https://your-domain.com`
-3. If still failing after 10 minutes, check ACM certificate status in AWS Console
-
 ### "No Hosted Zone Found" Error
 
-```
-✗ old-brand.com: no Route 53 hosted zone found
-```
+The domain isn't in Route 53. Options:
+1. Create a hosted zone in Route 53 and update registrar NS records
+2. Migrate DNS to Route 53
 
-This domain isn't in Route 53. To fix:
-1. **If you own the domain:** Create a hosted zone in Route 53, then update your domain registrar's NS records to point to Route 53
-2. **If the domain is managed elsewhere:** This service requires Route 53. Either migrate DNS to Route 53 or use a different redirect solution for this domain
+### Certificate Pending Validation
 
-## Security
+ACM certificates require DNS validation. Ensure validation CNAME records exist in Route 53.
 
-- All redirects use HTTPS
-- CloudFront enforces TLS 1.2+
-- No origin servers required (CloudFront Function responds directly at edge)
-- IAM roles follow least-privilege principle
-- CodeBuild runs in isolated environment
-- No sensitive data stored (only domain→target mappings)
-
-## Technical Details
-
-### Technology Stack
-
-| Component | Technology |
-|-----------|------------|
-| Infrastructure as Code | AWS CDK (TypeScript) |
-| Validation & Scripts | TypeScript |
-| Testing | Jest |
-| Package Structure | Single package |
-
-### CloudFront Function Naming
-
-Functions are named using a sanitized version of the target URL:
-
-```
-https://www.brand-a.com         → redirector-www-brand-a-com
-https://www.brand-a.com/landing → redirector-www-brand-a-com-landing
-```
-
-Sanitization rules:
-- Prefix with `redirector-`
-- Lowercase
-- Replace `.` and `/` with `-`
-- Strip protocol and trailing slashes
-- Truncate at 64 characters (CloudFront limit) with hash suffix if needed
-
-### Hosted Zone Lookup
-
-For subdomains, CDK walks up the domain tree to find the Route 53 hosted zone:
-
-```
-Domain: www.old-brand.com
-  → Try zone: www.old-brand.com (not found)
-  → Try zone: old-brand.com (found)
-  → Create A/AAAA record in old-brand.com zone
-```
-
-This matches the typical Route 53 setup where one hosted zone at the apex contains all subdomain records.
-
-## Inspiration & Related Projects
-
-This project was inspired by and builds upon ideas from:
-
-### AWS Official Samples
-
-- **[aws-samples/amazon-cloudfront-redirector](https://github.com/aws-samples/amazon-cloudfront-redirector)**
-  CloudFront Functions + KeyValueStore approach for URL redirections at scale. Uses CSV configuration and supports regex redirects, date ranges, and status codes. MIT-0 license.
-
-### Community Projects
-
-- **[spencerbeggs/aws-cdk-domain-redirect](https://github.com/spencerbeggs/aws-cdk-domain-redirect)**
-  AWS CDK construct using Lambda@Edge for domain redirects. Good API design for path/query preservation. MIT license.
-
-- **[Cloudar - Enhancing Redirect Strategies with CloudFront Functions and KeyValueStore](https://cloudar.be/awsblog/enhancing-redirect-strategies-with-aws-cloudfront-functions-and-keyvaluestore/)**
-  Detailed blog post on implementing redirects with KeyValueStore.
-
-- **[Babbel Engineering - Supercharging URLs with CloudFront Functions and KeyValueStore](https://www.babbel.com/en/magazine/supercharging-url-redirects-with-aws-cloudfront-functions-and-keyvaluestore)**
-  Production case study of this architecture pattern.
-
-### Why We Chose This Approach
-
-| Alternative | Why Not |
-|-------------|---------|
-| Single distribution, multi-domain certs | Complex certificate management — can't add >100 SANs per cert, must rebuild certs when domains change, need state tracking |
-| Lambda@Edge | Slower (~5ms vs <1ms), more expensive, region-locked deployment |
-| S3 Website Redirect | Requires one bucket per redirect config, no dynamic logic |
-| ALB Redirect Rules | Requires running infrastructure, significantly more expensive |
-| API Gateway | Overkill for simple redirects, higher latency |
-
-One distribution per domain + one function per destination provides:
-- **Simplicity**: Add a domain = create one distribution + one cert. Add a new target = create one function.
-- **Performance**: Sub-millisecond redirects at the edge
-- **Cost**: Same as single-distribution (~$0.10 per million requests) — CloudFront pricing is usage-based
-- **Isolation**: Problems with one domain don't affect others; each function is independent
-- **Clean scaling**: Works the same way whether you have 5 domains or 200
+---
 
 ## Contributing
 
-1. Create a feature branch
-2. Make changes
-3. Open a pull request
-4. Merge to `main` after approval
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Run tests (`npm test`)
+5. Commit (`git commit -m 'Add amazing feature'`)
+6. Push (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
+
+### Development
+
+```bash
+cd cdk
+npm install
+npm run build    # Compile TypeScript
+npm test         # Run tests
+npx cdk synth    # Synthesize CloudFormation (checks cdk-nag)
+```
+
+---
+
+## Inspiration
+
+This project builds upon ideas from:
+
+- **[aws-samples/amazon-cloudfront-redirector](https://github.com/aws-samples/amazon-cloudfront-redirector)** - CloudFront Functions + KeyValueStore approach
+- **[spencerbeggs/aws-cdk-domain-redirect](https://github.com/spencerbeggs/aws-cdk-domain-redirect)** - CDK construct with Lambda@Edge
+- **[Cloudar Blog](https://cloudar.be/awsblog/enhancing-redirect-strategies-with-aws-cloudfront-functions-and-keyvaluestore/)** - Redirect strategies with KeyValueStore
+
+---
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+<p align="center">
+  <sub>Built with AWS CDK and CloudFront Functions</sub>
+</p>
