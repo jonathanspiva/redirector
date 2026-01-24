@@ -262,12 +262,24 @@ redirector/
 ├── redirects.yaml              # Redirect configuration (edit this)
 ├── buildspec.yml               # CodeBuild: validate, deploy, test
 └── cdk/
-    ├── package.json
+    ├── package.json            # Single package for all TypeScript
     ├── cdk.json
     ├── tsconfig.json
-    └── lib/
-        ├── redirect-stack.ts       # Per-domain distributions + per-destination functions
-        └── pipeline-stack.ts       # CodePipeline + CodeBuild infrastructure
+    ├── jest.config.js
+    ├── bin/
+    │   └── app.ts              # CDK app entry point
+    ├── lib/
+    │   ├── redirect-stack.ts   # Per-domain distributions + per-destination functions
+    │   ├── pipeline-stack.ts   # CodePipeline + CodeBuild infrastructure
+    │   └── config/
+    │       ├── types.ts        # TypeScript types for redirects.yaml
+    │       ├── parser.ts       # YAML parsing
+    │       └── validator.ts    # Pre-deployment validation
+    ├── scripts/
+    │   └── smoke-test.ts       # Post-deployment verification
+    └── test/
+        ├── validator.test.ts   # Validation unit tests
+        └── redirect-stack.test.ts  # CDK stack tests
 ```
 
 ## Setup Guide
@@ -631,6 +643,46 @@ This domain isn't in Route 53. To fix:
 - IAM roles follow least-privilege principle
 - CodeBuild runs in isolated environment
 - No sensitive data stored (only domain→target mappings)
+
+## Technical Details
+
+### Technology Stack
+
+| Component | Technology |
+|-----------|------------|
+| Infrastructure as Code | AWS CDK (TypeScript) |
+| Validation & Scripts | TypeScript |
+| Testing | Jest |
+| Package Structure | Single package |
+
+### CloudFront Function Naming
+
+Functions are named using a sanitized version of the target URL:
+
+```
+https://www.brand-a.com         → redirector-www-brand-a-com
+https://www.brand-a.com/landing → redirector-www-brand-a-com-landing
+```
+
+Sanitization rules:
+- Prefix with `redirector-`
+- Lowercase
+- Replace `.` and `/` with `-`
+- Strip protocol and trailing slashes
+- Truncate at 64 characters (CloudFront limit) with hash suffix if needed
+
+### Hosted Zone Lookup
+
+For subdomains, CDK walks up the domain tree to find the Route 53 hosted zone:
+
+```
+Domain: www.old-brand.com
+  → Try zone: www.old-brand.com (not found)
+  → Try zone: old-brand.com (found)
+  → Create A/AAAA record in old-brand.com zone
+```
+
+This matches the typical Route 53 setup where one hosted zone at the apex contains all subdomain records.
 
 ## Inspiration & Related Projects
 
