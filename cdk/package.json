@@ -22,6 +22,7 @@
     "test": "jest",
     "cdk": "cdk",
     "validate": "ts-node lib/config/validator.ts",
+    "preflight": "ts-node scripts/preflight-check.ts",
     "smoke-test": "ts-node scripts/smoke-test.ts"
   },
   "devDependencies": {
@@ -35,6 +36,7 @@
     "typescript": "~5.4.5"
   },
   "dependencies": {
+    "@aws-sdk/client-route-53": "^3.700.0",
     "aws-cdk-lib": "^2.170.0",
     "constructs": "^10.3.0",
     "source-map-support": "^0.5.21",

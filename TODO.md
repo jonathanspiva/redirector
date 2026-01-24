@@ -2,22 +2,32 @@
 
 ## Enhancements
 
-### Handle existing DNS record conflicts gracefully
+### ~~Pre-flight checks for DNS conflicts~~ ✅ DONE
 
-When deploying redirects, if Route 53 already has an A/AAAA record for a domain, the CloudFormation stack fails with:
+Pre-flight validation now checks for existing Route 53 records before deployment. See `/cdk/scripts/preflight-check.ts`.
 
+**What it checks:**
+- Route 53 hosted zone exists for each domain
+- No conflicting A/AAAA records already exist
+- Distinguishes between alias records (likely from previous deployment) and regular records (will cause conflict)
+
+**Usage:**
+```bash
+npm run preflight -- ../redirects.yaml
+
+# To fail build on conflicts (default is warn):
+PREFLIGHT_MODE=fail npm run preflight -- ../redirects.yaml
 ```
-Tried to create resource record set [name='example.com.', type='A'] but it already exists
-```
 
-**Potential solutions to consider:**
+---
 
-1. **Pre-flight check**: Add a validation step that checks for existing DNS records before deployment and warns the user
-2. **Import existing records**: Use CloudFormation import or CDK's `fromXxx` methods to adopt existing resources
-3. **Overwrite option**: Add a `--force` flag or config option to delete conflicting records before deployment
-4. **Better error messaging**: Catch this specific error and provide actionable guidance (e.g., "Run `npm run cleanup-dns example.com` to remove conflicting records")
+### Handle DNS conflicts gracefully (Future Enhancement)
 
-**Context**: This commonly happens when migrating domains that already have DNS records pointing elsewhere (e.g., Squarespace, old hosting).
+Additional options to consider if pre-flight warnings aren't sufficient:
+
+1. **Import existing records**: Use CloudFormation import or CDK's `fromXxx` methods to adopt existing resources
+2. **Overwrite option**: Add a `--force` flag or config option to delete conflicting records before deployment
+3. **Better error messaging**: Catch specific CloudFormation errors and provide actionable guidance
 
 ## Deployment Time Optimizations
 
