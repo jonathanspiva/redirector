@@ -26,29 +26,6 @@ function sanitizeLogicalId(input: string): string {
 }
 
 /**
- * Extract the base domain for hosted zone lookup.
- * Handles wildcards and subdomains by walking up the domain tree.
- *
- * Examples:
- *   "*.old-brand.com" -> "old-brand.com"
- *   "www.old-brand.com" -> "old-brand.com" (if no www zone exists)
- *   "old-brand.com" -> "old-brand.com"
- */
-function getBaseDomain(domain: string): string {
-  // Remove wildcard prefix if present
-  const cleanDomain = domain.startsWith('*.') ? domain.substring(2) : domain;
-  return cleanDomain;
-}
-
-/**
- * Get the domain name for the certificate.
- * Wildcards remain as-is, regular domains stay as-is.
- */
-function getCertificateDomain(domain: string): string {
-  return domain;
-}
-
-/**
  * Main stack for the domain redirector service.
  *
  * Creates:
@@ -139,7 +116,8 @@ export class RedirectStack extends cdk.Stack {
    * Walks up the domain tree to find the appropriate zone.
    */
   private lookupHostedZone(domain: string): route53.IHostedZone {
-    const baseDomain = getBaseDomain(domain);
+    // Remove wildcard prefix if present
+    const baseDomain = domain.startsWith('*.') ? domain.substring(2) : domain;
     const parts = baseDomain.split('.');
 
     // Try each level of the domain hierarchy
@@ -180,10 +158,8 @@ export class RedirectStack extends cdk.Stack {
     domain: string,
     hostedZone: route53.IHostedZone
   ): acm.ICertificate {
-    const certDomain = getCertificateDomain(domain);
-
     return new acm.Certificate(this, `Cert${domainId}`, {
-      domainName: certDomain,
+      domainName: domain,
       validation: acm.CertificateValidation.fromDns(hostedZone),
     });
   }

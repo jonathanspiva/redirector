@@ -151,153 +151,102 @@ export class PipelineStack extends cdk.Stack {
     project: codebuild.PipelineProject,
     connectionArn: string
   ): void {
-    // CDK needs to assume the CDK bootstrap roles
-    project.addToRolePolicy(new iam.PolicyStatement({
-      sid: 'CdkRoleAssumption',
-      effect: iam.Effect.ALLOW,
-      actions: ['sts:AssumeRole'],
-      resources: [`arn:aws:iam::${this.account}:role/cdk-*`],
-    }));
+    // Define all IAM permissions in a data-driven format
+    const permissions: Array<{ sid: string; actions: string[]; resources: string[] }> = [
+      {
+        sid: 'CdkRoleAssumption',
+        actions: ['sts:AssumeRole'],
+        resources: [`arn:aws:iam::${this.account}:role/cdk-*`],
+      },
+      {
+        sid: 'CloudFormationStackManagement',
+        actions: [
+          'cloudformation:DescribeStacks', 'cloudformation:GetTemplate',
+          'cloudformation:CreateChangeSet', 'cloudformation:DescribeChangeSet',
+          'cloudformation:ExecuteChangeSet', 'cloudformation:DeleteChangeSet',
+          'cloudformation:DescribeStackEvents',
+        ],
+        resources: [
+          `arn:aws:cloudformation:*:${this.account}:stack/RedirectStack/*`,
+          `arn:aws:cloudformation:*:${this.account}:stack/CDKToolkit/*`,
+        ],
+      },
+      {
+        sid: 'CdkAssetsBucketAccess',
+        actions: ['s3:GetObject', 's3:PutObject', 's3:ListBucket', 's3:GetBucketLocation'],
+        resources: [
+          `arn:aws:s3:::cdk-*-assets-${this.account}-*`,
+          `arn:aws:s3:::cdk-*-assets-${this.account}-*/*`,
+        ],
+      },
+      {
+        sid: 'CdkBootstrapParameters',
+        actions: ['ssm:GetParameter'],
+        resources: [`arn:aws:ssm:*:${this.account}:parameter/cdk-bootstrap/*`],
+      },
+      {
+        sid: 'Route53ListOperations',
+        actions: ['route53:ListHostedZones', 'route53:ListHostedZonesByName', 'route53:GetHostedZone'],
+        resources: ['*'], // Required by AWS API
+      },
+      {
+        sid: 'Route53RecordManagement',
+        actions: ['route53:ChangeResourceRecordSets', 'route53:ListResourceRecordSets'],
+        resources: ['arn:aws:route53:::hostedzone/*'],
+      },
+      {
+        sid: 'AcmCertificateManagement',
+        actions: [
+          'acm:RequestCertificate', 'acm:DescribeCertificate', 'acm:DeleteCertificate',
+          'acm:ListCertificates', 'acm:AddTagsToCertificate', 'acm:ListTagsForCertificate',
+        ],
+        resources: [`arn:aws:acm:us-east-1:${this.account}:certificate/*`],
+      },
+      {
+        sid: 'AcmListCertificates',
+        actions: ['acm:ListCertificates'],
+        resources: ['*'], // Required by AWS API
+      },
+      {
+        sid: 'CloudFrontDistributionManagement',
+        actions: [
+          'cloudfront:CreateDistribution', 'cloudfront:UpdateDistribution',
+          'cloudfront:DeleteDistribution', 'cloudfront:GetDistribution',
+          'cloudfront:GetDistributionConfig', 'cloudfront:TagResource',
+          'cloudfront:UntagResource', 'cloudfront:ListTagsForResource',
+        ],
+        resources: [`arn:aws:cloudfront::${this.account}:distribution/*`],
+      },
+      {
+        sid: 'CloudFrontFunctionManagement',
+        actions: [
+          'cloudfront:CreateFunction', 'cloudfront:UpdateFunction',
+          'cloudfront:DeleteFunction', 'cloudfront:DescribeFunction',
+          'cloudfront:PublishFunction', 'cloudfront:GetFunction',
+        ],
+        resources: [`arn:aws:cloudfront::${this.account}:function/*`],
+      },
+      {
+        sid: 'CloudFrontListOperations',
+        actions: ['cloudfront:ListDistributions', 'cloudfront:ListFunctions'],
+        resources: ['*'], // Required by AWS API
+      },
+      {
+        sid: 'CodeStarConnectionAccess',
+        actions: ['codestar-connections:UseConnection'],
+        resources: [connectionArn],
+      },
+    ];
 
-    // CloudFormation permissions - scoped to specific stacks
-    project.addToRolePolicy(new iam.PolicyStatement({
-      sid: 'CloudFormationStackManagement',
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'cloudformation:DescribeStacks',
-        'cloudformation:GetTemplate',
-        'cloudformation:CreateChangeSet',
-        'cloudformation:DescribeChangeSet',
-        'cloudformation:ExecuteChangeSet',
-        'cloudformation:DeleteChangeSet',
-        'cloudformation:DescribeStackEvents',
-      ],
-      resources: [
-        `arn:aws:cloudformation:*:${this.account}:stack/RedirectStack/*`,
-        `arn:aws:cloudformation:*:${this.account}:stack/CDKToolkit/*`,
-      ],
-    }));
-
-    // S3 permissions for CDK assets bucket
-    project.addToRolePolicy(new iam.PolicyStatement({
-      sid: 'CdkAssetsBucketAccess',
-      effect: iam.Effect.ALLOW,
-      actions: [
-        's3:GetObject',
-        's3:PutObject',
-        's3:ListBucket',
-        's3:GetBucketLocation',
-      ],
-      resources: [
-        `arn:aws:s3:::cdk-*-assets-${this.account}-*`,
-        `arn:aws:s3:::cdk-*-assets-${this.account}-*/*`,
-      ],
-    }));
-
-    // SSM permissions for CDK context lookups
-    project.addToRolePolicy(new iam.PolicyStatement({
-      sid: 'CdkBootstrapParameters',
-      effect: iam.Effect.ALLOW,
-      actions: ['ssm:GetParameter'],
-      resources: [`arn:aws:ssm:*:${this.account}:parameter/cdk-bootstrap/*`],
-    }));
-
-    // Route 53 - List operations require wildcard (AWS API limitation)
-    project.addToRolePolicy(new iam.PolicyStatement({
-      sid: 'Route53ListOperations',
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'route53:ListHostedZones',
-        'route53:ListHostedZonesByName',
-        'route53:GetHostedZone',
-      ],
-      resources: ['*'], // Required by AWS API
-    }));
-
-    // Route 53 - Mutation operations scoped to hosted zones
-    project.addToRolePolicy(new iam.PolicyStatement({
-      sid: 'Route53RecordManagement',
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'route53:ChangeResourceRecordSets',
-        'route53:ListResourceRecordSets',
-      ],
-      resources: ['arn:aws:route53:::hostedzone/*'],
-    }));
-
-    // ACM permissions - scoped to us-east-1 (CloudFront requirement)
-    project.addToRolePolicy(new iam.PolicyStatement({
-      sid: 'AcmCertificateManagement',
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'acm:RequestCertificate',
-        'acm:DescribeCertificate',
-        'acm:DeleteCertificate',
-        'acm:ListCertificates',
-        'acm:AddTagsToCertificate',
-        'acm:ListTagsForCertificate',
-      ],
-      resources: [`arn:aws:acm:us-east-1:${this.account}:certificate/*`],
-    }));
-
-    // ACM ListCertificates requires wildcard
-    project.addToRolePolicy(new iam.PolicyStatement({
-      sid: 'AcmListCertificates',
-      effect: iam.Effect.ALLOW,
-      actions: ['acm:ListCertificates'],
-      resources: ['*'], // Required by AWS API
-    }));
-
-    // CloudFront distribution operations - scoped to account
-    project.addToRolePolicy(new iam.PolicyStatement({
-      sid: 'CloudFrontDistributionManagement',
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'cloudfront:CreateDistribution',
-        'cloudfront:UpdateDistribution',
-        'cloudfront:DeleteDistribution',
-        'cloudfront:GetDistribution',
-        'cloudfront:GetDistributionConfig',
-        'cloudfront:TagResource',
-        'cloudfront:UntagResource',
-        'cloudfront:ListTagsForResource',
-      ],
-      resources: [`arn:aws:cloudfront::${this.account}:distribution/*`],
-    }));
-
-    // CloudFront function operations - scoped to account
-    project.addToRolePolicy(new iam.PolicyStatement({
-      sid: 'CloudFrontFunctionManagement',
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'cloudfront:CreateFunction',
-        'cloudfront:UpdateFunction',
-        'cloudfront:DeleteFunction',
-        'cloudfront:DescribeFunction',
-        'cloudfront:PublishFunction',
-        'cloudfront:GetFunction',
-      ],
-      resources: [`arn:aws:cloudfront::${this.account}:function/*`],
-    }));
-
-    // CloudFront list operations require wildcard
-    project.addToRolePolicy(new iam.PolicyStatement({
-      sid: 'CloudFrontListOperations',
-      effect: iam.Effect.ALLOW,
-      actions: [
-        'cloudfront:ListDistributions',
-        'cloudfront:ListFunctions',
-      ],
-      resources: ['*'], // Required by AWS API
-    }));
-
-    // CodeStar connection - scoped to specific connection
-    project.addToRolePolicy(new iam.PolicyStatement({
-      sid: 'CodeStarConnectionAccess',
-      effect: iam.Effect.ALLOW,
-      actions: ['codestar-connections:UseConnection'],
-      resources: [connectionArn],
-    }));
+    // Apply all permissions
+    for (const perm of permissions) {
+      project.addToRolePolicy(new iam.PolicyStatement({
+        sid: perm.sid,
+        effect: iam.Effect.ALLOW,
+        actions: perm.actions,
+        resources: perm.resources,
+      }));
+    }
   }
 
   /**

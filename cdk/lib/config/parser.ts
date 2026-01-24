@@ -175,14 +175,7 @@ export function groupDomainsByTarget(config: RedirectConfig): Map<string, Resolv
  * @returns Array of unique target configurations (first domain's config for each target)
  */
 export function getUniqueTargets(config: RedirectConfig): ResolvedDomainConfig[] {
-  const grouped = groupDomainsByTarget(config);
-  const targets: ResolvedDomainConfig[] = [];
-
-  for (const [, domains] of grouped) {
-    if (domains.length > 0) {
-      targets.push(domains[0]);
-    }
-  }
-
-  return targets;
+  return Array.from(groupDomainsByTarget(config).values())
+    .filter(domains => domains.length > 0)
+    .map(domains => domains[0]);
 }

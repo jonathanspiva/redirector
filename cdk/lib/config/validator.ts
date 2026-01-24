@@ -2,6 +2,20 @@ import { RedirectConfig, RedirectGroup, ValidationError, ValidationResult } from
 import { loadConfig } from './parser';
 
 /**
+ * Validate that an optional field is a boolean if present.
+ */
+function validateOptionalBoolean(
+  value: unknown,
+  field: string,
+  basePath: string
+): ValidationError | null {
+  if (value !== undefined && typeof value !== 'boolean') {
+    return { path: `${basePath}.${field}`, message: `${field} must be a boolean` };
+  }
+  return null;
+}
+
+/**
  * Validate a domain name format.
  * Supports regular domains and wildcards (*.example.com).
  */
@@ -109,25 +123,14 @@ function validateRedirectGroup(
   }
 
   // Validate optional boolean fields
-  if (group.preservePath !== undefined && typeof group.preservePath !== 'boolean') {
-    errors.push({
-      path: `${basePath}.preservePath`,
-      message: 'preservePath must be a boolean',
-    });
-  }
-
-  if (group.preserveQuery !== undefined && typeof group.preserveQuery !== 'boolean') {
-    errors.push({
-      path: `${basePath}.preserveQuery`,
-      message: 'preserveQuery must be a boolean',
-    });
-  }
-
-  if (group.active !== undefined && typeof group.active !== 'boolean') {
-    errors.push({
-      path: `${basePath}.active`,
-      message: 'active must be a boolean',
-    });
+  const booleanFields: Array<{ field: string; value: unknown }> = [
+    { field: 'preservePath', value: group.preservePath },
+    { field: 'preserveQuery', value: group.preserveQuery },
+    { field: 'active', value: group.active },
+  ];
+  for (const { field, value } of booleanFields) {
+    const error = validateOptionalBoolean(value, field, basePath);
+    if (error) errors.push(error);
   }
 
   // Validate skipTest
@@ -184,17 +187,13 @@ export function validateConfig(config: RedirectConfig): ValidationResult {
     if (typeof config.settings !== 'object') {
       errors.push({ path: 'settings', message: 'settings must be an object' });
     } else {
-      if (config.settings.preservePath !== undefined && typeof config.settings.preservePath !== 'boolean') {
-        errors.push({
-          path: 'settings.preservePath',
-          message: 'preservePath must be a boolean',
-        });
-      }
-      if (config.settings.preserveQuery !== undefined && typeof config.settings.preserveQuery !== 'boolean') {
-        errors.push({
-          path: 'settings.preserveQuery',
-          message: 'preserveQuery must be a boolean',
-        });
+      const settingsFields: Array<{ field: string; value: unknown }> = [
+        { field: 'preservePath', value: config.settings.preservePath },
+        { field: 'preserveQuery', value: config.settings.preserveQuery },
+      ];
+      for (const { field, value } of settingsFields) {
+        const error = validateOptionalBoolean(value, field, 'settings');
+        if (error) errors.push(error);
       }
     }
   }
