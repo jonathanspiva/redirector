@@ -19,11 +19,14 @@ Changes to the configuration file trigger automatic deployment via AWS CodePipel
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                           Git Repository                                 │
 │                                                                          │
-│   redirects.yaml  ───▶  CodePipeline  ───▶  CodeBuild  ───▶  CDK Deploy │
-│   (edit this)           (on push)           (validate)      (provision) │
-│                                                    │                     │
-│                                                    └────▶  Smoke Tests   │
-│                                                           (verify)       │
+│   redirects.yaml  ───▶  CodePipeline  ───▶  CodeBuild                   │
+│   (edit this)           (on push)           │                            │
+│                                             ├──▶  Validate YAML          │
+│                                             │     (syntax, domains, URLs)│
+│                                             ├──▶  CDK Deploy             │
+│                                             │     (provision resources)  │
+│                                             └──▶  Smoke Tests            │
+│                                                   (verify redirects)     │
 └─────────────────────────────────────────────────────────────────────────┘
                                           │
                                           ▼
@@ -464,17 +467,64 @@ Tags.of(this).add('ManagedBy', 'cdk');
    - Group by → Tag → `Project`
    - Filter by `Project` = `domain-redirector`
 
-## Validation
+## Pre-Deployment Validation
 
-The build process validates `redirects.yaml` before deployment:
+Before any infrastructure changes, CodeBuild validates `redirects.yaml`:
 
-- YAML syntax check
-- Required fields present
-- Valid domain format (including wildcards like `*.example.com`)
-- No duplicate domains
-- Target URLs are valid
+### YAML Structure
 
-If validation fails, the deployment is aborted and an error is reported.
+| Check | Example Error |
+|-------|---------------|
+| Valid YAML syntax | `line 12: mapping values not allowed here` |
+| `redirects` is an array | `redirects must be an array` |
+| `settings` is an object | `settings must be an object` |
+
+### Required Fields
+
+Each redirect group must have:
+
+| Field | Required | Validation |
+|-------|----------|------------|
+| `target` | Yes | Must be a valid HTTPS URL |
+| `type` | Yes | Must be `permanent` or `temporary` |
+| `domains` | Yes | Must be a non-empty array |
+| `description` | No | String, for documentation |
+| `preservePath` | No | Boolean |
+| `preserveQuery` | No | Boolean |
+| `active` | No | Boolean (defaults to `true`) |
+| `skipTest` | No | Array of domains to skip in smoke tests |
+
+### Domain Validation
+
+| Check | Valid | Invalid |
+|-------|-------|---------|
+| Format | `example.com`, `sub.example.com` | `http://example.com`, `example` |
+| Wildcards | `*.example.com` | `*.*.example.com`, `*example.com` |
+| No duplicates | — | Same domain in multiple groups |
+| Characters | `my-site.com`, `site123.com` | `my_site.com`, `site!.com` |
+
+### Target URL Validation
+
+| Check | Valid | Invalid |
+|-------|-------|---------|
+| HTTPS required | `https://example.com` | `http://example.com` |
+| Valid URL format | `https://example.com/path` | `example.com` |
+| No trailing slash | `https://example.com` | `https://example.com/` |
+
+### Example Validation Errors
+
+```
+Validation failed:
+
+  ✗ redirects[0].target: must be HTTPS URL, got "http://example.com"
+  ✗ redirects[1].domains[2]: invalid domain format "not a domain"
+  ✗ redirects[2].domains[0]: duplicate domain "old-brand.com" (also in redirects[0])
+  ✗ redirects[3].type: must be "permanent" or "temporary", got "perm"
+
+Deployment aborted. Fix errors in redirects.yaml and push again.
+```
+
+If validation fails, no infrastructure changes are made.
 
 ## Post-Deployment Testing
 
