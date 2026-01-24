@@ -51,6 +51,7 @@ export class RedirectStack extends cdk.Stack {
     // Apply default tags
     cdk.Tags.of(this).add('Project', 'domain-redirector');
     cdk.Tags.of(this).add('ManagedBy', 'cdk');
+    cdk.Tags.of(this).add('Environment', 'prod');
 
     // Create CloudFront Functions for each unique target
     const uniqueTargets = getUniqueTargets(config);

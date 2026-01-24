@@ -43,6 +43,7 @@ export class PipelineStack extends cdk.Stack {
     // Apply default tags
     cdk.Tags.of(this).add('Project', 'domain-redirector');
     cdk.Tags.of(this).add('ManagedBy', 'cdk');
+    cdk.Tags.of(this).add('Environment', 'prod');
 
     // Create KMS key for artifact encryption with auto-rotation
     const artifactKey = new kms.Key(this, 'ArtifactKey', {
