@@ -1,6 +1,6 @@
 # Domain Redirector
 
-An AWS-native service that manages HTTP redirects for multiple domains using CloudFront and CloudFront Functions. Configuration is managed via a simple YAML file, making it accessible to non-developers.
+An AWS-native service that manages HTTP redirects for multiple domains using CloudFront, CloudFront Functions, and KeyValueStore. Configuration is managed via a simple YAML file, making it accessible to non-developers.
 
 ## Overview
 
@@ -8,7 +8,8 @@ This service reads from a YAML configuration file and automatically provisions:
 
 - **CloudFront Distribution** — Single distribution handling all domains
 - **CloudFront Function** — Edge function that performs redirects based on Host header
-- **ACM Certificate** — SSL/TLS certificate covering all configured domains
+- **CloudFront KeyValueStore** — Low-latency datastore for redirect mappings (scales to thousands of domains)
+- **ACM Certificates** — SSL/TLS certificates covering all configured domains
 - **Route 53 Records** — A/AAAA records pointing domains to CloudFront
 
 Changes to the configuration file trigger automatic deployment via AWS CodePipeline and CodeBuild.
@@ -25,19 +26,61 @@ Changes to the configuration file trigger automatic deployment via AWS CodePipel
 └─────────────────────────────────────────────────────────────────────────┘
                                           │
                                           ▼
-                    ┌─────────────────────────────────────┐
-                    │              AWS                     │
-                    │                                      │
-                    │   ┌─────────────┐  ┌─────────────┐  │
-                    │   │ CloudFront  │  │    ACM      │  │
-                    │   │Distribution │  │ Certificate │  │
-                    │   └──────┬──────┘  └─────────────┘  │
-                    │          │                          │
-                    │   ┌──────▼──────┐  ┌─────────────┐  │
-                    │   │ CloudFront  │  │  Route 53   │  │
-                    │   │  Function   │  │  Records    │  │
-                    │   └─────────────┘  └─────────────┘  │
-                    └─────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                                 AWS                                      │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │                    CloudFront Distribution                          │ │
+│  │                    (all domains as CNAMEs)                          │ │
+│  └─────────────────────────────┬──────────────────────────────────────┘ │
+│                                │                                         │
+│              ┌─────────────────┼─────────────────┐                      │
+│              ▼                 ▼                 ▼                      │
+│  ┌─────────────────┐  ┌───────────────┐  ┌─────────────────┐           │
+│  │   CloudFront    │  │  KeyValueStore │  │  ACM Certificates│           │
+│  │    Function     │◀─│  (redirect     │  │  (up to 100      │           │
+│  │  (viewer-request)│  │   mappings)    │  │   domains each)  │           │
+│  └─────────────────┘  └───────────────┘  └─────────────────┘           │
+│                                                                          │
+│  ┌─────────────────┐                                                    │
+│  │   Route 53      │  A/AAAA records pointing to CloudFront             │
+│  │   Records       │                                                    │
+│  └─────────────────┘                                                    │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Why KeyValueStore?
+
+CloudFront Functions have a **10 KB code size limit**, which is quickly exceeded when hardcoding hundreds of redirect mappings. CloudFront KeyValueStore solves this:
+
+| Approach | Limit | Best For |
+|----------|-------|----------|
+| Hardcoded in function | 10 KB code limit | <50 simple redirects |
+| **KeyValueStore** | 5 MB total | Hundreds/thousands of redirects |
+
+KeyValueStore provides:
+- **Sub-millisecond lookups** at the edge
+- **Dynamic updates** without redeploying the function
+- **5 MB capacity** — easily handles 1000+ domains
+
+```javascript
+// How the CloudFront Function works
+import cf from 'cloudfront';
+const kv = cf.kvs();
+
+async function handler(event) {
+  const host = event.request.headers.host.value;
+  const redirect = await kv.get(host);  // Sub-ms edge lookup
+
+  if (redirect) {
+    const { target, type } = JSON.parse(redirect);
+    return {
+      statusCode: type === 'permanent' ? 301 : 302,
+      headers: { location: { value: target + event.request.uri } }
+    };
+  }
+  // ... fallback handling
+}
 ```
 
 ## Quick Start
@@ -124,7 +167,7 @@ redirects:
 ## Project Structure
 
 ```
-redirect-manager/
+redirector/
 ├── README.md                   # This file
 ├── redirects.yaml              # Redirect configuration (edit this)
 ├── buildspec.yml               # CodeBuild instructions
@@ -133,7 +176,7 @@ redirect-manager/
     ├── cdk.json
     ├── tsconfig.json
     └── lib/
-        ├── redirect-stack.ts       # CloudFront + Function infrastructure
+        ├── redirect-stack.ts       # CloudFront + Function + KeyValueStore
         └── pipeline-stack.ts       # CodePipeline + CodeBuild infrastructure
 ```
 
@@ -150,8 +193,8 @@ redirect-manager/
 
 1. **Clone the repository**
    ```bash
-   git clone git@github.com:your-org/redirect-manager.git
-   cd redirect-manager
+   git clone git@github.com:jonathanspiva/redirector.git
+   cd redirector
    ```
 
 2. **Install dependencies**
@@ -172,8 +215,8 @@ redirect-manager/
    export CDK_DEFAULT_ACCOUNT=your-aws-account-id
    export CDK_DEFAULT_REGION=us-east-1
    export GITHUB_CONNECTION_ARN=arn:aws:codestar-connections:...
-   export GITHUB_OWNER=your-org
-   export GITHUB_REPO=redirect-manager
+   export GITHUB_OWNER=jonathanspiva
+   export GITHUB_REPO=redirector
    ```
 
 5. **Bootstrap CDK (first time only)**
@@ -193,18 +236,48 @@ redirect-manager/
 
 After initial setup, all future changes to `redirects.yaml` will be deployed automatically when pushed to `main`.
 
+## AWS Service Limits
+
+### ACM Certificates
+
+| Quota | Default | Maximum |
+|-------|---------|---------|
+| Domains per certificate | 10 | 100 (request increase via Service Quotas) |
+
+For 250 domains, the service automatically creates multiple certificates (3 certificates for 250 domains).
+
+### CloudFront KeyValueStore
+
+| Resource | Limit |
+|----------|-------|
+| Total size | 5 MB |
+| Key size | 512 bytes |
+| Value size | 1 KB |
+| Stores per function | 1 |
+
+With an average of ~100 bytes per domain entry, KeyValueStore can handle **50,000+ domains**.
+
+### CloudFront Functions
+
+| Resource | Limit |
+|----------|-------|
+| Code size | 10 KB |
+| Runtime | cloudfront-js-2.0 |
+| Execution time | <1 ms typical |
+
 ## AWS Resources Created
 
 | Resource | Description | Estimated Cost |
 |----------|-------------|----------------|
 | CloudFront Distribution | CDN for all domains | ~$1-5/month (traffic dependent) |
-| CloudFront Function | Redirect logic | ~$0.10 per 1M requests |
-| ACM Certificate | SSL/TLS for all domains | Free |
+| CloudFront Function | Redirect logic at edge | ~$0.10 per 1M requests |
+| CloudFront KeyValueStore | Redirect mappings | ~$0.05/month + reads |
+| ACM Certificates | SSL/TLS (multiple if >100 domains) | Free |
 | Route 53 Records | DNS entries | Included in hosted zone cost |
 | CodePipeline | CI/CD pipeline | $1/month |
 | CodeBuild | Build environment | ~$0.01 per deploy |
 
-**Total estimated cost: $2-10/month** (depends on traffic volume)
+**Total estimated cost: $3-10/month** (depends on traffic volume)
 
 ## Validation
 
@@ -241,9 +314,45 @@ ACM certificates require DNS validation. Ensure the validation CNAME records are
 
 - All redirects use HTTPS
 - CloudFront enforces TLS 1.2+
-- No origin servers required (CloudFront Function responds directly)
+- No origin servers required (CloudFront Function responds directly at edge)
 - IAM roles follow least-privilege principle
 - CodeBuild runs in isolated environment
+- No sensitive data stored (only domain→target mappings)
+
+## Inspiration & Related Projects
+
+This project was inspired by and builds upon ideas from:
+
+### AWS Official Samples
+
+- **[aws-samples/amazon-cloudfront-redirector](https://github.com/aws-samples/amazon-cloudfront-redirector)**
+  CloudFront Functions + KeyValueStore approach for URL redirections at scale. Uses CSV configuration and supports regex redirects, date ranges, and status codes. MIT-0 license.
+
+### Community Projects
+
+- **[spencerbeggs/aws-cdk-domain-redirect](https://github.com/spencerbeggs/aws-cdk-domain-redirect)**
+  AWS CDK construct using Lambda@Edge for domain redirects. Good API design for path/query preservation. MIT license.
+
+- **[Cloudar - Enhancing Redirect Strategies with CloudFront Functions and KeyValueStore](https://cloudar.be/awsblog/enhancing-redirect-strategies-with-aws-cloudfront-functions-and-keyvaluestore/)**
+  Detailed blog post on implementing redirects with KeyValueStore.
+
+- **[Babbel Engineering - Supercharging URLs with CloudFront Functions and KeyValueStore](https://www.babbel.com/en/magazine/supercharging-url-redirects-with-aws-cloudfront-functions-and-keyvaluestore)**
+  Production case study of this architecture pattern.
+
+### Why We Chose This Approach
+
+| Alternative | Why Not |
+|-------------|---------|
+| Lambda@Edge | Slower (~5ms vs <1ms), more expensive, region-locked deployment |
+| S3 Website Redirect | Requires one bucket per redirect config, no dynamic logic |
+| ALB Redirect Rules | Requires running infrastructure, significantly more expensive |
+| API Gateway | Overkill for simple redirects, higher latency |
+
+CloudFront Functions + KeyValueStore provides the best combination of:
+- **Performance**: Sub-millisecond redirects at the edge
+- **Cost**: ~$0.10 per million requests
+- **Scale**: Handles thousands of domains
+- **Simplicity**: No servers to manage
 
 ## Contributing
 
