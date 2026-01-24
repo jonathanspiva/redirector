@@ -23,14 +23,9 @@ phases:
 
   build:
     commands:
-      - echo "Deploying RedirectStack..."
-      - cd cdk && npx cdk deploy RedirectStack --require-approval never --outputs-file outputs.json
-      - echo "Deployment complete"
-
-  post_build:
-    commands:
-      - echo "Running smoke tests..."
-      - cd cdk && npm run smoke-test -- ../redirects.yaml || echo "Smoke tests completed with warnings (new domains may still be propagating)"
+      - echo "Running smart deploy (skips deployment if redirects already work)..."
+      # Set FORCE_DEPLOY=true to force deployment even if smoke tests pass
+      - cd cdk && npm run smart-deploy -- ../redirects.yaml
       - echo "Build complete"
 
 artifacts:

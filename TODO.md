@@ -31,17 +31,25 @@ Additional options to consider if pre-flight warnings aren't sufficient:
 
 ## Deployment Time Optimizations
 
-### Skip deployment when nothing has changed (High Priority)
+### ~~Skip deployment when nothing has changed~~ ✅ DONE
 
-Before running a full `cdk deploy`, check if the current `redirects.yaml` configuration matches what's already deployed. If forwards already work as expected, skip the deployment entirely.
+Smart deploy script now runs smoke tests first. If all redirects are working, deployment is skipped entirely.
 
-**Potential approaches:**
-1. **Hash-based check**: Store a hash of `redirects.yaml` (or its resolved config) in SSM Parameter Store or S3. Compare before deploying.
-2. **CloudFormation drift detection**: Use `aws cloudformation detect-stack-drift` to check if actual state matches desired state
-3. **CDK diff check**: Run `cdk diff` first and parse output - if no changes, skip deploy
-4. **Live validation**: Run smoke tests against current config before deploying. If all pass, no deployment needed.
+**How it works:**
+1. Run smoke tests against current configuration
+2. If all pass → skip `cdk deploy` (unless `FORCE_DEPLOY=true`)
+3. If any fail → run `cdk deploy` → re-run smoke tests
 
-**Implementation location**: `buildspec.yml` pre_build phase or a new script in `/cdk/scripts/`
+**Usage:**
+```bash
+# Normal (skips deploy if redirects work)
+npm run smart-deploy -- ../redirects.yaml
+
+# Force deployment for testing
+FORCE_DEPLOY=true npm run smart-deploy -- ../redirects.yaml
+```
+
+See `/cdk/scripts/smart-deploy.ts`
 
 ---
 
