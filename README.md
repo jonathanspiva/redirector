@@ -19,9 +19,11 @@ Changes to the configuration file trigger automatic deployment via AWS CodePipel
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                           Git Repository                                 │
 │                                                                          │
-│   redirects.yaml    ───▶   CodePipeline   ───▶   CodeBuild   ───▶  CDK  │
-│   (edit this)              (on push)            (build)          Deploy │
-│                                                                          │
+│   redirects.yaml  ───▶  CodePipeline  ───▶  CodeBuild  ───▶  CDK Deploy │
+│   (edit this)           (on push)           (validate)      (provision) │
+│                                                    │                     │
+│                                                    └────▶  Smoke Tests   │
+│                                                           (verify)       │
 └─────────────────────────────────────────────────────────────────────────┘
                                           │
                                           ▼
@@ -253,7 +255,7 @@ Use the `active` field to disable a redirect without removing it from config:
 redirector/
 ├── README.md                   # This file
 ├── redirects.yaml              # Redirect configuration (edit this)
-├── buildspec.yml               # CodeBuild instructions
+├── buildspec.yml               # CodeBuild: validate, deploy, test
 └── cdk/
     ├── package.json
     ├── cdk.json
@@ -474,6 +476,61 @@ The build process validates `redirects.yaml` before deployment:
 
 If validation fails, the deployment is aborted and an error is reported.
 
+## Post-Deployment Testing
+
+After each deployment, CodeBuild runs smoke tests to verify redirects are working:
+
+```bash
+# Example test output in CodeBuild logs
+Testing old-brand.com...
+  ✓ HTTP 301 Moved Permanently
+  ✓ Location: https://www.brand-a.com/
+Testing acquired-company.com...
+  ✓ HTTP 301 Moved Permanently
+  ✓ Location: https://www.brand-a.com/acquired
+All 2 redirect tests passed.
+```
+
+### What's Tested
+
+For each active domain, the smoke test verifies:
+
+| Check | Expected |
+|-------|----------|
+| HTTP status code | Matches configured type (301 or 302) |
+| Location header | Starts with configured target URL |
+| HTTPS works | Certificate is valid and trusted |
+
+### Handling New Domains
+
+New domains may not be immediately testable due to:
+- **DNS propagation** — Route 53 changes can take up to 60 seconds
+- **Certificate issuance** — ACM DNS validation typically takes 2-5 minutes
+
+The smoke test handles this by:
+1. Testing existing domains first (should pass immediately)
+2. Retrying new domains with exponential backoff (up to 5 minutes)
+3. Logging warnings for domains that aren't ready yet (doesn't fail the build)
+
+### Viewing Test Results
+
+Test output appears in:
+- **CodeBuild logs** — Full output in AWS Console → CodeBuild → Build history
+- **Pipeline status** — Green/red indicator in CodePipeline
+
+### Skipping Tests for Specific Domains
+
+Add `skipTest: true` to skip smoke testing for a domain (useful for domains with unusual DNS setups):
+
+```yaml
+  - target: "https://www.brand-a.com"
+    domains:
+      - old-brand.com
+      - external-dns-domain.com    # Managed outside Route 53
+    skipTest:
+      - external-dns-domain.com
+```
+
 ## Troubleshooting
 
 ### Deployment Failed
@@ -492,6 +549,13 @@ If validation fails, the deployment is aborted and an error is reported.
 ### Certificate Pending Validation
 
 ACM certificates require DNS validation. Ensure the validation CNAME records are created in Route 53.
+
+### Smoke Test Warnings
+
+If smoke tests show warnings for new domains:
+1. This is normal — DNS and certificates take a few minutes to propagate
+2. Wait 5 minutes and manually test with `curl -I https://your-domain.com`
+3. If still failing after 10 minutes, check ACM certificate status in AWS Console
 
 ## Security
 
