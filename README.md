@@ -30,13 +30,13 @@ Changes to the configuration file trigger automatic deployment via AWS CodePipel
 │                                                                          │
 │  CloudFront Functions (one per destination):                            │
 │  ┌──────────────────────────────────────────────────────────────────┐   │
-│  │  redirect-to-brand-a     →  redirects to https://www.brand-a.com │   │
-│  │  redirect-to-brand-b     →  redirects to https://www.brand-b.com │   │
+│  │  redirect-to-brand-a           →  https://www.brand-a.com        │   │
+│  │  redirect-to-brand-a-acquired  →  https://www.brand-a.com/acquired│   │
 │  └──────────────────────────────────────────────────────────────────┘   │
 │                                                                          │
 │  Per-domain resources:                                                   │
 │  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │  old-brand.com  →  brand-a                                          │ │
+│  │  old-brand.com                                                      │ │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │ │
 │  │  │  CloudFront  │  │     ACM      │  │   Route 53   │              │ │
 │  │  │ Distribution │──│ Certificate  │  │   A/AAAA     │              │ │
@@ -46,11 +46,11 @@ Changes to the configuration file trigger automatic deployment via AWS CodePipel
 │  └────────────────────────────────────────────────────────────────────┘ │
 │                                                                          │
 │  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │  legacy-site.net  →  brand-a  (uses same function)                  │ │
+│  │  *.old-brand.com  (wildcard — same pattern, same function)          │ │
 │  └────────────────────────────────────────────────────────────────────┘ │
 │                                                                          │
 │  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │  enterprise-old.com  →  brand-b  (uses redirect-to-brand-b)         │ │
+│  │  acquired-company.com  →  redirect-to-brand-a-acquired              │ │
 │  └────────────────────────────────────────────────────────────────────┘ │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -77,7 +77,6 @@ Each unique destination target gets its own CloudFront Function. The function is
 
 ```javascript
 // Auto-generated: redirect-to-brand-a.js
-// All domains using this function redirect to the same target
 var defined = {
   target: "https://www.brand-a.com",
   statusCode: 301,
@@ -87,9 +86,15 @@ var defined = {
 
 function handler(event) {
   var url = defined.target;
-  if (defined.preservePath) url += event.request.uri;
-  if (defined.preserveQuery && event.request.querystring)
-    url += "?" + event.request.querystring;
+  if (defined.preservePath) {
+    url += event.request.uri;
+  }
+  if (defined.preserveQuery) {
+    var qs = Object.keys(event.request.querystring)
+      .map(function(k) { return k + "=" + event.request.querystring[k].value; })
+      .join("&");
+    if (qs) url += "?" + qs;
+  }
   return {
     statusCode: defined.statusCode,
     headers: { location: { value: url } }
@@ -98,8 +103,8 @@ function handler(event) {
 ```
 
 Distributions are associated with the appropriate function based on their target. For example:
-- `old-brand.com` and `legacy-site.net` both use `redirect-to-brand-a` function
-- `enterprise-old.com` uses `redirect-to-brand-b` function
+- `old-brand.com` and `*.old-brand.com` both use `redirect-to-brand-a` function
+- `acquired-company.com` uses `redirect-to-brand-a-acquired` function (different target path)
 
 **Benefits of one function per destination:**
 - **Simpler function code** — No host header lookup or mapping table needed
@@ -127,40 +132,22 @@ Edit `redirects.yaml` to manage redirects:
 
 ```yaml
 redirects:
-  # Permanent redirect (301) - domain is retired forever
+  # Legacy brand domains → main site
   - target: "https://www.brand-a.com"
     type: permanent
     description: "Legacy consumer brand domains"
     domains:
       - old-brand.com
       - "*.old-brand.com"    # Wildcard catches all subdomains
-      - legacy-site.net
 
-  # Another permanent redirect to a different destination
-  - target: "https://www.brand-b.com"
+  # Acquired company domains → landing page (no path preservation)
+  - target: "https://www.brand-a.com/acquired"
     type: permanent
-    description: "Enterprise domains"
+    description: "Acquired company domains"
+    preservePath: false
     domains:
-      - enterprise-old.com
-      - b2b-legacy.io
-
-  # Disabled redirect - resources won't be deployed
-  - target: "https://www.brand-c.com"
-    type: permanent
-    active: false
-    description: "Prepared for future migration (not yet active)"
-    domains:
-      - future-domain.com
-
-  # Temporary redirect (302) - campaigns, testing, seasonal
-  # Override path preservation for landing page
-  - target: "https://www.brand-a.com/summer-sale"
-    type: temporary
-    description: "Summer 2024 campaign"
-    preservePath: false   # Always land on /summer-sale, ignore original path
-    domains:
-      - summer-deals.com
-      - hot-sale.com
+      - acquired-company.com
+      - "*.acquired-company.com"
 
 settings:
   preservePath: true    # Default: old.com/page → target.com/page
@@ -169,10 +156,12 @@ settings:
 
 ### Redirect Types
 
-| Type | HTTP Code | Use Case | SEO Impact |
-|------|-----------|----------|------------|
-| `permanent` | 301 | Domain is retired forever | Transfers SEO value to target |
-| `temporary` | 302 | Campaigns, testing, seasonal | Original domain keeps SEO value |
+| Type | HTTP Code | Use Case |
+|------|-----------|----------|
+| `permanent` | 301 | Domain is retired forever (recommended) |
+| `temporary` | 302 | Rare — only if domain may return to active use |
+
+Most redirects should be `permanent`. This signals to browsers and search engines that the domain is retired and transfers SEO value to the target.
 
 ### Path and Query Preservation
 
@@ -194,28 +183,6 @@ You can override this per redirect group:
 | `preserveQuery` | `true` | Appends original query string to target |
 
 Per-rule settings override the global `settings` values.
-
-### Enabling and Disabling Redirects
-
-Use the `active` field to disable a redirect without removing it from config:
-
-```yaml
-  - target: "https://www.brand-a.com"
-    active: false   # Disabled - no resources deployed
-    description: "Temporarily disabled for testing"
-    domains:
-      - old-brand.com
-```
-
-| `active` Value | Behavior |
-|----------------|----------|
-| `true` (default) | Resources are created/maintained |
-| `false` | Resources are not created; existing resources are removed |
-
-**Use cases:**
-- Temporarily disable a redirect while debugging
-- Prepare a redirect in advance without activating it
-- Keep a record of redirects in config even when not in use
 
 ### Adding a New Domain
 
@@ -262,6 +229,23 @@ redirects:
       - domain-one.com
       - domain-two.com
 ```
+
+### Disabling a Redirect
+
+Use the `active` field to disable a redirect without removing it from config:
+
+```yaml
+  - target: "https://www.brand-a.com"
+    active: false   # Disabled - no resources deployed
+    description: "Temporarily disabled for testing"
+    domains:
+      - old-brand.com
+```
+
+| `active` Value | Behavior |
+|----------------|----------|
+| `true` (default) | Resources are created/maintained |
+| `false` | Resources are not created; existing resources are removed |
 
 ## Project Structure
 
