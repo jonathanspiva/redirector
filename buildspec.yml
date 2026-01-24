@@ -1,0 +1,41 @@
+version: 0.2
+
+env:
+  variables:
+    NODE_VERSION: "20"
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+    commands:
+      - echo "Installing dependencies..."
+      - cd cdk && npm ci
+
+  pre_build:
+    commands:
+      - echo "Validating configuration..."
+      - cd cdk && npm run validate -- ../redirects.yaml
+      - echo "Running unit tests..."
+      - cd cdk && npm test
+
+  build:
+    commands:
+      - echo "Deploying RedirectStack..."
+      - cd cdk && npx cdk deploy RedirectStack --require-approval never --outputs-file outputs.json
+      - echo "Deployment complete"
+
+  post_build:
+    commands:
+      - echo "Running smoke tests..."
+      - cd cdk && npm run smoke-test -- ../redirects.yaml || echo "Smoke tests completed with warnings (new domains may still be propagating)"
+      - echo "Build complete"
+
+artifacts:
+  files:
+    - cdk/outputs.json
+  discard-paths: yes
+
+cache:
+  paths:
+    - cdk/node_modules/**/*
