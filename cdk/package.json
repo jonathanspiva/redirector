@@ -1,8 +1,21 @@
 {
   "name": "domain-redirector-cdk",
   "version": "1.0.0",
-  "description": "CDK infrastructure for domain redirector service",
+  "description": "AWS CDK infrastructure for managing HTTP redirects across multiple domains using CloudFront",
+  "license": "MIT",
   "main": "lib/redirect-stack.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jonathanspiva/redirector.git"
+  },
+  "keywords": [
+    "aws",
+    "cdk",
+    "cloudfront",
+    "redirect",
+    "domain",
+    "infrastructure"
+  ],
   "scripts": {
     "build": "tsc",
     "watch": "tsc -w",

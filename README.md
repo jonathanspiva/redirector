@@ -296,7 +296,7 @@ redirector/
 
 1. **Clone the repository**
    ```bash
-   git clone git@github.com:jonathanspiva/redirector.git
+   git clone <your-repo-url>
    cd redirector
    ```
 
@@ -315,11 +315,11 @@ redirector/
 
 4. **Set environment variables**
    ```bash
-   export CDK_DEFAULT_ACCOUNT=your-aws-account-id
+   export CDK_DEFAULT_ACCOUNT=<your-aws-account-id>
    export CDK_DEFAULT_REGION=us-east-1
-   export GITHUB_CONNECTION_ARN=arn:aws:codestar-connections:...
-   export GITHUB_OWNER=jonathanspiva
-   export GITHUB_REPO=redirector
+   export GITHUB_CONNECTION_ARN=<your-codestar-connection-arn>
+   export GITHUB_OWNER=<your-github-username>
+   export GITHUB_REPO=<your-repo-name>
    ```
 
 5. **Bootstrap CDK (first time only)**
@@ -730,4 +730,4 @@ One distribution per domain + one function per destination provides:
 
 ## License
 
-Private - Internal use only.
+MIT License - see [LICENSE](LICENSE) for details.
