@@ -1,0 +1,1239 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1`] = `
+{
+  "Outputs": {
+    "PipelineArn": {
+      "Description": "CodePipeline ARN",
+      "Value": "arn:aws:codepipeline:us-east-1:123456789012:domain-redirector",
+    },
+  },
+  "Parameters": {},
+  "Resources": {
+    "BuildProject097C5DB7": {
+      "Properties": {
+        "Artifacts": {
+          "Type": "CODEPIPELINE",
+        },
+        "Cache": {
+          "Type": "NO_CACHE",
+        },
+        "Description": "Validate, deploy, and test domain redirector",
+        "EncryptionKey": {
+          "Fn::GetAtt": [
+            "PipelineArtifactsBucketEncryptionKey01D58D69",
+            "Arn",
+          ],
+        },
+        "Environment": {
+          "ComputeType": "BUILD_GENERAL1_SMALL",
+          "Image": "aws/codebuild/standard:7.0",
+          "ImagePullCredentialsType": "CODEBUILD",
+          "PrivilegedMode": false,
+          "Type": "LINUX_CONTAINER",
+        },
+        "Name": "domain-redirector-build",
+        "ServiceRole": {
+          "Fn::GetAtt": [
+            "BuildProjectRoleAA92C755",
+            "Arn",
+          ],
+        },
+        "Source": {
+          "BuildSpec": "buildspec.yml",
+          "Type": "CODEPIPELINE",
+        },
+        "Tags": [
+          {
+            "Key": "ManagedBy",
+            "Value": "cdk",
+          },
+          {
+            "Key": "Project",
+            "Value": "domain-redirector",
+          },
+        ],
+        "TimeoutInMinutes": 30,
+      },
+      "Type": "AWS::CodeBuild::Project",
+    },
+    "BuildProjectRoleAA92C755": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "codebuild.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "Tags": [
+          {
+            "Key": "ManagedBy",
+            "Value": "cdk",
+          },
+          {
+            "Key": "Project",
+            "Value": "domain-redirector",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "BuildProjectRoleDefaultPolicy3E9F248C": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":logs:us-east-1:123456789012:log-group:/aws/codebuild/",
+                      {
+                        "Ref": "BuildProject097C5DB7",
+                      },
+                    ],
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":logs:us-east-1:123456789012:log-group:/aws/codebuild/",
+                      {
+                        "Ref": "BuildProject097C5DB7",
+                      },
+                      ":*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "codebuild:CreateReportGroup",
+                "codebuild:CreateReport",
+                "codebuild:UpdateReport",
+                "codebuild:BatchPutTestCases",
+                "codebuild:BatchPutCodeCoverages",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::Join": [
+                  "",
+                  [
+                    "arn:",
+                    {
+                      "Ref": "AWS::Partition",
+                    },
+                    ":codebuild:us-east-1:123456789012:report-group/",
+                    {
+                      "Ref": "BuildProject097C5DB7",
+                    },
+                    "-*",
+                  ],
+                ],
+              },
+            },
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Resource": "arn:aws:iam::123456789012:role/cdk-*",
+            },
+            {
+              "Action": [
+                "cloudformation:DescribeStacks",
+                "cloudformation:GetTemplate",
+                "cloudformation:CreateChangeSet",
+                "cloudformation:DescribeChangeSet",
+                "cloudformation:ExecuteChangeSet",
+                "cloudformation:DeleteChangeSet",
+                "cloudformation:DescribeStackEvents",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                "arn:aws:cloudformation:*:123456789012:stack/RedirectStack/*",
+                "arn:aws:cloudformation:*:123456789012:stack/CDKToolkit/*",
+              ],
+            },
+            {
+              "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:ListBucket",
+                "s3:GetBucketLocation",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                "arn:aws:s3:::cdk-*-assets-123456789012-*",
+                "arn:aws:s3:::cdk-*-assets-123456789012-*/*",
+              ],
+            },
+            {
+              "Action": "ssm:GetParameter",
+              "Effect": "Allow",
+              "Resource": "arn:aws:ssm:*:123456789012:parameter/cdk-bootstrap/*",
+            },
+            {
+              "Action": [
+                "route53:ListHostedZones",
+                "route53:ListHostedZonesByName",
+                "route53:GetHostedZone",
+                "route53:ChangeResourceRecordSets",
+                "route53:ListResourceRecordSets",
+              ],
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": [
+                "acm:RequestCertificate",
+                "acm:DescribeCertificate",
+                "acm:DeleteCertificate",
+                "acm:ListCertificates",
+                "acm:AddTagsToCertificate",
+              ],
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": [
+                "cloudfront:CreateDistribution",
+                "cloudfront:UpdateDistribution",
+                "cloudfront:DeleteDistribution",
+                "cloudfront:GetDistribution",
+                "cloudfront:TagResource",
+                "cloudfront:CreateFunction",
+                "cloudfront:UpdateFunction",
+                "cloudfront:DeleteFunction",
+                "cloudfront:DescribeFunction",
+                "cloudfront:PublishFunction",
+                "cloudfront:GetFunction",
+                "cloudfront:ListFunctions",
+              ],
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "PipelineArtifactsBucket22248F97",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "PipelineArtifactsBucket22248F97",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "PipelineArtifactsBucketEncryptionKey01D58D69",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "kms:Decrypt",
+                "kms:Encrypt",
+                "kms:ReEncrypt*",
+                "kms:GenerateDataKey*",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "PipelineArtifactsBucketEncryptionKey01D58D69",
+                  "Arn",
+                ],
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "BuildProjectRoleDefaultPolicy3E9F248C",
+        "Roles": [
+          {
+            "Ref": "BuildProjectRoleAA92C755",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "PipelineArtifactsBucket22248F97": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "KMSMasterKeyID": {
+                  "Fn::GetAtt": [
+                    "PipelineArtifactsBucketEncryptionKey01D58D69",
+                    "Arn",
+                  ],
+                },
+                "SSEAlgorithm": "aws:kms",
+              },
+            },
+          ],
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true,
+        },
+        "Tags": [
+          {
+            "Key": "ManagedBy",
+            "Value": "cdk",
+          },
+          {
+            "Key": "Project",
+            "Value": "domain-redirector",
+          },
+        ],
+      },
+      "Type": "AWS::S3::Bucket",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "PipelineArtifactsBucketEncryptionKey01D58D69": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "KeyPolicy": {
+          "Statement": [
+            {
+              "Action": "kms:*",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":iam::123456789012:root",
+                    ],
+                  ],
+                },
+              },
+              "Resource": "*",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "Tags": [
+          {
+            "Key": "ManagedBy",
+            "Value": "cdk",
+          },
+          {
+            "Key": "Project",
+            "Value": "domain-redirector",
+          },
+        ],
+      },
+      "Type": "AWS::KMS::Key",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "PipelineArtifactsBucketEncryptionKeyAlias5C510EEE": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "AliasName": "alias/codepipeline-snapshotpipelinestackpipelinebbb90ec0",
+        "TargetKeyId": {
+          "Fn::GetAtt": [
+            "PipelineArtifactsBucketEncryptionKey01D58D69",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "AWS::KMS::Alias",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "PipelineArtifactsBucketPolicyD4F9712A": {
+      "Properties": {
+        "Bucket": {
+          "Ref": "PipelineArtifactsBucket22248F97",
+        },
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "s3:*",
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false",
+                },
+              },
+              "Effect": "Deny",
+              "Principal": {
+                "AWS": "*",
+              },
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "PipelineArtifactsBucket22248F97",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "PipelineArtifactsBucket22248F97",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+      },
+      "Type": "AWS::S3::BucketPolicy",
+    },
+    "PipelineBuildAndDeployCodePipelineActionRoleDefaultPolicyBFAD9166": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "codebuild:BatchGetBuilds",
+                "codebuild:StartBuild",
+                "codebuild:StopBuild",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "BuildProject097C5DB7",
+                  "Arn",
+                ],
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "PipelineBuildAndDeployCodePipelineActionRoleDefaultPolicyBFAD9166",
+        "Roles": [
+          {
+            "Ref": "PipelineBuildAndDeployCodePipelineActionRoleF42A7164",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "PipelineBuildAndDeployCodePipelineActionRoleF42A7164": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::GetAtt": [
+                    "PipelineRoleD68726F7",
+                    "Arn",
+                  ],
+                },
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "Tags": [
+          {
+            "Key": "ManagedBy",
+            "Value": "cdk",
+          },
+          {
+            "Key": "Project",
+            "Value": "domain-redirector",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "PipelineC660917D": {
+      "DependsOn": [
+        "PipelineRoleDefaultPolicyC7A05455",
+        "PipelineRoleD68726F7",
+      ],
+      "Properties": {
+        "ArtifactStore": {
+          "EncryptionKey": {
+            "Id": {
+              "Fn::GetAtt": [
+                "PipelineArtifactsBucketEncryptionKey01D58D69",
+                "Arn",
+              ],
+            },
+            "Type": "KMS",
+          },
+          "Location": {
+            "Ref": "PipelineArtifactsBucket22248F97",
+          },
+          "Type": "S3",
+        },
+        "Name": "domain-redirector",
+        "RestartExecutionOnUpdate": true,
+        "RoleArn": {
+          "Fn::GetAtt": [
+            "PipelineRoleD68726F7",
+            "Arn",
+          ],
+        },
+        "Stages": [
+          {
+            "Actions": [
+              {
+                "ActionTypeId": {
+                  "Category": "Source",
+                  "Owner": "AWS",
+                  "Provider": "CodeStarSourceConnection",
+                  "Version": "1",
+                },
+                "Configuration": {
+                  "BranchName": "main",
+                  "ConnectionArn": "arn:aws:codestar-connections:us-east-1:123456789012:connection/test-connection-id",
+                  "DetectChanges": true,
+                  "FullRepositoryId": "test-owner/test-repo",
+                },
+                "Name": "GitHub",
+                "OutputArtifacts": [
+                  {
+                    "Name": "SourceOutput",
+                  },
+                ],
+                "RoleArn": {
+                  "Fn::GetAtt": [
+                    "PipelineSourceGitHubCodePipelineActionRole1AB4BA0C",
+                    "Arn",
+                  ],
+                },
+                "RunOrder": 1,
+              },
+            ],
+            "Name": "Source",
+          },
+          {
+            "Actions": [
+              {
+                "ActionTypeId": {
+                  "Category": "Build",
+                  "Owner": "AWS",
+                  "Provider": "CodeBuild",
+                  "Version": "1",
+                },
+                "Configuration": {
+                  "EnvironmentVariables": "[{"name":"CDK_DEFAULT_ACCOUNT","type":"PLAINTEXT","value":"123456789012"},{"name":"CDK_DEFAULT_REGION","type":"PLAINTEXT","value":"us-east-1"}]",
+                  "ProjectName": {
+                    "Ref": "BuildProject097C5DB7",
+                  },
+                },
+                "InputArtifacts": [
+                  {
+                    "Name": "SourceOutput",
+                  },
+                ],
+                "Name": "BuildAndDeploy",
+                "RoleArn": {
+                  "Fn::GetAtt": [
+                    "PipelineBuildAndDeployCodePipelineActionRoleF42A7164",
+                    "Arn",
+                  ],
+                },
+                "RunOrder": 1,
+              },
+            ],
+            "Name": "BuildAndDeploy",
+          },
+        ],
+        "Tags": [
+          {
+            "Key": "ManagedBy",
+            "Value": "cdk",
+          },
+          {
+            "Key": "Project",
+            "Value": "domain-redirector",
+          },
+        ],
+      },
+      "Type": "AWS::CodePipeline::Pipeline",
+    },
+    "PipelineRoleD68726F7": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "codepipeline.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "Tags": [
+          {
+            "Key": "ManagedBy",
+            "Value": "cdk",
+          },
+          {
+            "Key": "Project",
+            "Value": "domain-redirector",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "PipelineRoleDefaultPolicyC7A05455": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "PipelineArtifactsBucket22248F97",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "PipelineArtifactsBucket22248F97",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+                "kms:Encrypt",
+                "kms:ReEncrypt*",
+                "kms:GenerateDataKey*",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "PipelineArtifactsBucketEncryptionKey01D58D69",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "PipelineSourceGitHubCodePipelineActionRole1AB4BA0C",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "PipelineBuildAndDeployCodePipelineActionRoleF42A7164",
+                  "Arn",
+                ],
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "PipelineRoleDefaultPolicyC7A05455",
+        "Roles": [
+          {
+            "Ref": "PipelineRoleD68726F7",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "PipelineSourceGitHubCodePipelineActionRole1AB4BA0C": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::GetAtt": [
+                    "PipelineRoleD68726F7",
+                    "Arn",
+                  ],
+                },
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "Tags": [
+          {
+            "Key": "ManagedBy",
+            "Value": "cdk",
+          },
+          {
+            "Key": "Project",
+            "Value": "domain-redirector",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "PipelineSourceGitHubCodePipelineActionRoleDefaultPolicy3EDC09EF": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "codestar-connections:UseConnection",
+              "Effect": "Allow",
+              "Resource": "arn:aws:codestar-connections:us-east-1:123456789012:connection/test-connection-id",
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:DeleteObject*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "PipelineArtifactsBucket22248F97",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "PipelineArtifactsBucket22248F97",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+                "kms:Encrypt",
+                "kms:ReEncrypt*",
+                "kms:GenerateDataKey*",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "PipelineArtifactsBucketEncryptionKey01D58D69",
+                  "Arn",
+                ],
+              },
+            },
+            {
+              "Action": [
+                "s3:PutObjectAcl",
+                "s3:PutObjectVersionAcl",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::Join": [
+                  "",
+                  [
+                    {
+                      "Fn::GetAtt": [
+                        "PipelineArtifactsBucket22248F97",
+                        "Arn",
+                      ],
+                    },
+                    "/*",
+                  ],
+                ],
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "PipelineSourceGitHubCodePipelineActionRoleDefaultPolicy3EDC09EF",
+        "Roles": [
+          {
+            "Ref": "PipelineSourceGitHubCodePipelineActionRole1AB4BA0C",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+  },
+}
+`;
+
+exports[`PipelineStack Snapshots should match resource counts snapshot 1`] = `
+{
+  "AWS::CodeBuild::Project": 1,
+  "AWS::CodePipeline::Pipeline": 1,
+  "AWS::IAM::Policy": 4,
+  "AWS::IAM::Role": 4,
+  "AWS::S3::Bucket": 1,
+}
+`;
+
+exports[`RedirectStack Snapshots should match CloudFormation template snapshot 1`] = `
+{
+  "Mappings": {
+    "AWSCloudFrontPartitionHostedZoneIdMap": {
+      "aws": {
+        "zoneId": "Z2FDTNDATAQYW2",
+      },
+      "aws-cn": {
+        "zoneId": "Z3RFFRIM2A3IF5",
+      },
+    },
+  },
+  "Parameters": {},
+  "Resources": {
+    "AAAARecordoldprimarycomDE592D3F": {
+      "Properties": {
+        "AliasTarget": {
+          "DNSName": {
+            "Fn::GetAtt": [
+              "DistoldprimarycomE8646CDB",
+              "DomainName",
+            ],
+          },
+          "HostedZoneId": {
+            "Fn::FindInMap": [
+              "AWSCloudFrontPartitionHostedZoneIdMap",
+              {
+                "Ref": "AWS::Partition",
+              },
+              "zoneId",
+            ],
+          },
+        },
+        "HostedZoneId": "ZPRIMARY",
+        "Name": "old-primary.com.",
+        "Type": "AAAA",
+      },
+      "Type": "AWS::Route53::RecordSet",
+    },
+    "AAAARecordpromocom88F11524": {
+      "Properties": {
+        "AliasTarget": {
+          "DNSName": {
+            "Fn::GetAtt": [
+              "Distpromocom8D7B9FDA",
+              "DomainName",
+            ],
+          },
+          "HostedZoneId": {
+            "Fn::FindInMap": [
+              "AWSCloudFrontPartitionHostedZoneIdMap",
+              {
+                "Ref": "AWS::Partition",
+              },
+              "zoneId",
+            ],
+          },
+        },
+        "HostedZoneId": "ZPROMO",
+        "Name": "promo.com.",
+        "Type": "AAAA",
+      },
+      "Type": "AWS::Route53::RecordSet",
+    },
+    "ARecordoldprimarycomB14730A3": {
+      "Properties": {
+        "AliasTarget": {
+          "DNSName": {
+            "Fn::GetAtt": [
+              "DistoldprimarycomE8646CDB",
+              "DomainName",
+            ],
+          },
+          "HostedZoneId": {
+            "Fn::FindInMap": [
+              "AWSCloudFrontPartitionHostedZoneIdMap",
+              {
+                "Ref": "AWS::Partition",
+              },
+              "zoneId",
+            ],
+          },
+        },
+        "HostedZoneId": "ZPRIMARY",
+        "Name": "old-primary.com.",
+        "Type": "A",
+      },
+      "Type": "AWS::Route53::RecordSet",
+    },
+    "ARecordpromocom92D11E53": {
+      "Properties": {
+        "AliasTarget": {
+          "DNSName": {
+            "Fn::GetAtt": [
+              "Distpromocom8D7B9FDA",
+              "DomainName",
+            ],
+          },
+          "HostedZoneId": {
+            "Fn::FindInMap": [
+              "AWSCloudFrontPartitionHostedZoneIdMap",
+              {
+                "Ref": "AWS::Partition",
+              },
+              "zoneId",
+            ],
+          },
+        },
+        "HostedZoneId": "ZPROMO",
+        "Name": "promo.com.",
+        "Type": "A",
+      },
+      "Type": "AWS::Route53::RecordSet",
+    },
+    "CertoldprimarycomF345B9D7": {
+      "Properties": {
+        "DomainName": "old-primary.com",
+        "DomainValidationOptions": [
+          {
+            "DomainName": "old-primary.com",
+            "HostedZoneId": "ZPRIMARY",
+          },
+        ],
+        "Tags": [
+          {
+            "Key": "ManagedBy",
+            "Value": "cdk",
+          },
+          {
+            "Key": "Name",
+            "Value": "SnapshotRedirectStack/Certoldprimarycom",
+          },
+          {
+            "Key": "Project",
+            "Value": "domain-redirector",
+          },
+        ],
+        "ValidationMethod": "DNS",
+      },
+      "Type": "AWS::CertificateManager::Certificate",
+    },
+    "CertpromocomF929780F": {
+      "Properties": {
+        "DomainName": "promo.com",
+        "DomainValidationOptions": [
+          {
+            "DomainName": "promo.com",
+            "HostedZoneId": "ZPROMO",
+          },
+        ],
+        "Tags": [
+          {
+            "Key": "ManagedBy",
+            "Value": "cdk",
+          },
+          {
+            "Key": "Name",
+            "Value": "SnapshotRedirectStack/Certpromocom",
+          },
+          {
+            "Key": "Project",
+            "Value": "domain-redirector",
+          },
+        ],
+        "ValidationMethod": "DNS",
+      },
+      "Type": "AWS::CertificateManager::Certificate",
+    },
+    "DistoldprimarycomE8646CDB": {
+      "Properties": {
+        "DistributionConfig": {
+          "Aliases": [
+            "old-primary.com",
+          ],
+          "Comment": "Redirect old-primary.com",
+          "DefaultCacheBehavior": {
+            "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+            "Compress": true,
+            "FunctionAssociations": [
+              {
+                "EventType": "viewer-request",
+                "FunctionARN": {
+                  "Fn::GetAtt": [
+                    "RedirectFnhttpswwwprimarycomFunction0FB061AA",
+                    "FunctionARN",
+                  ],
+                },
+              },
+            ],
+            "TargetOriginId": "dummy-origin",
+            "ViewerProtocolPolicy": "redirect-to-https",
+          },
+          "Enabled": true,
+          "HttpVersion": "http2",
+          "IPV6Enabled": true,
+          "Origins": [
+            {
+              "CustomOriginConfig": {
+                "HTTPPort": 80,
+                "HTTPSPort": 443,
+                "OriginProtocolPolicy": "https-only",
+              },
+              "DomainName": "dummy-origin.example.com",
+              "Id": "dummy-origin",
+            },
+          ],
+          "ViewerCertificate": {
+            "AcmCertificateArn": {
+              "Ref": "CertoldprimarycomF345B9D7",
+            },
+            "MinimumProtocolVersion": "TLSv1.2_2021",
+            "SslSupportMethod": "sni-only",
+          },
+        },
+        "Tags": [
+          {
+            "Key": "ManagedBy",
+            "Value": "cdk",
+          },
+          {
+            "Key": "Project",
+            "Value": "domain-redirector",
+          },
+        ],
+      },
+      "Type": "AWS::CloudFront::Distribution",
+    },
+    "Distpromocom8D7B9FDA": {
+      "Properties": {
+        "DistributionConfig": {
+          "Aliases": [
+            "promo.com",
+          ],
+          "Comment": "Redirect promo.com",
+          "DefaultCacheBehavior": {
+            "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+            "Compress": true,
+            "FunctionAssociations": [
+              {
+                "EventType": "viewer-request",
+                "FunctionARN": {
+                  "Fn::GetAtt": [
+                    "RedirectFnhttpswwwsecondarycomlandingFunctionE62F3E54",
+                    "FunctionARN",
+                  ],
+                },
+              },
+            ],
+            "TargetOriginId": "dummy-origin",
+            "ViewerProtocolPolicy": "redirect-to-https",
+          },
+          "Enabled": true,
+          "HttpVersion": "http2",
+          "IPV6Enabled": true,
+          "Origins": [
+            {
+              "CustomOriginConfig": {
+                "HTTPPort": 80,
+                "HTTPSPort": 443,
+                "OriginProtocolPolicy": "https-only",
+              },
+              "DomainName": "dummy-origin.example.com",
+              "Id": "dummy-origin",
+            },
+          ],
+          "ViewerCertificate": {
+            "AcmCertificateArn": {
+              "Ref": "CertpromocomF929780F",
+            },
+            "MinimumProtocolVersion": "TLSv1.2_2021",
+            "SslSupportMethod": "sni-only",
+          },
+        },
+        "Tags": [
+          {
+            "Key": "ManagedBy",
+            "Value": "cdk",
+          },
+          {
+            "Key": "Project",
+            "Value": "domain-redirector",
+          },
+        ],
+      },
+      "Type": "AWS::CloudFront::Distribution",
+    },
+    "RedirectFnhttpswwwprimarycomFunction0FB061AA": {
+      "Properties": {
+        "AutoPublish": true,
+        "FunctionCode": "var defined = {
+  target: "https://www.primary.com",
+  statusCode: 301,
+  preservePath: true,
+  preserveQuery: true
+};
+
+function handler(event) {
+  var url = defined.target;
+  if (defined.preservePath) {
+    url += event.request.uri;
+  }
+  if (defined.preserveQuery) {
+    var qs = Object.keys(event.request.querystring)
+      .map(function(k) { return k + "=" + event.request.querystring[k].value; })
+      .join("&");
+    if (qs) url += "?" + qs;
+  }
+  return {
+    statusCode: defined.statusCode,
+    headers: { location: { value: url } }
+  };
+}",
+        "FunctionConfig": {
+          "Comment": "Redirect to https://www.primary.com",
+          "Runtime": "cloudfront-js-2.0",
+        },
+        "Name": "redirector-www-primary-com",
+      },
+      "Type": "AWS::CloudFront::Function",
+    },
+    "RedirectFnhttpswwwsecondarycomlandingFunctionE62F3E54": {
+      "Properties": {
+        "AutoPublish": true,
+        "FunctionCode": "var defined = {
+  target: "https://www.secondary.com/landing",
+  statusCode: 302,
+  preservePath: false,
+  preserveQuery: false
+};
+
+function handler(event) {
+  var url = defined.target;
+  if (defined.preservePath) {
+    url += event.request.uri;
+  }
+  if (defined.preserveQuery) {
+    var qs = Object.keys(event.request.querystring)
+      .map(function(k) { return k + "=" + event.request.querystring[k].value; })
+      .join("&");
+    if (qs) url += "?" + qs;
+  }
+  return {
+    statusCode: defined.statusCode,
+    headers: { location: { value: url } }
+  };
+}",
+        "FunctionConfig": {
+          "Comment": "Redirect to https://www.secondary.com/landing",
+          "Runtime": "cloudfront-js-2.0",
+        },
+        "Name": "redirector-www-secondary-com-landing",
+      },
+      "Type": "AWS::CloudFront::Function",
+    },
+  },
+}
+`;
+
+exports[`RedirectStack Snapshots should match resource counts snapshot 1`] = `
+{
+  "AWS::CertificateManager::Certificate": 2,
+  "AWS::CloudFront::Distribution": 2,
+  "AWS::CloudFront::Function": 2,
+  "AWS::Route53::RecordSet": 4,
+}
+`;

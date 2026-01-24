@@ -383,3 +383,272 @@ describe('formatValidationErrors', () => {
     expect(result).toContain('Deployment aborted');
   });
 });
+
+describe('additional branch coverage', () => {
+  describe('target URL validation edge cases', () => {
+    it('should reject invalid URL format', () => {
+      const config: RedirectConfig = {
+        redirects: [
+          {
+            target: 'not-a-valid-url',
+            type: 'permanent',
+            domains: ['old.com'],
+          },
+        ],
+        settings: { preservePath: true, preserveQuery: true },
+      };
+
+      const result = validateConfig(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e =>
+        e.path === 'redirects[0].target' && e.message.includes('invalid URL format')
+      )).toBe(true);
+    });
+
+    it('should accept target URLs with paths that have trailing content', () => {
+      const config: RedirectConfig = {
+        redirects: [
+          {
+            target: 'https://example.com/path/to/page',
+            type: 'permanent',
+            domains: ['old.com'],
+          },
+        ],
+        settings: { preservePath: true, preserveQuery: true },
+      };
+
+      const result = validateConfig(config);
+      expect(result.valid).toBe(true);
+    });
+  });
+
+  describe('domains array validation', () => {
+    it('should reject non-array domains', () => {
+      const config = {
+        redirects: [
+          {
+            target: 'https://www.example.com',
+            type: 'permanent',
+            domains: 'not-an-array',
+          },
+        ],
+        settings: { preservePath: true, preserveQuery: true },
+      } as unknown as RedirectConfig;
+
+      const result = validateConfig(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e =>
+        e.path === 'redirects[0].domains' && e.message.includes('must be an array')
+      )).toBe(true);
+    });
+
+    it('should reject non-string domain entries', () => {
+      const config = {
+        redirects: [
+          {
+            target: 'https://www.example.com',
+            type: 'permanent',
+            domains: [123, { domain: 'test' }],
+          },
+        ],
+        settings: { preservePath: true, preserveQuery: true },
+      } as unknown as RedirectConfig;
+
+      const result = validateConfig(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e =>
+        e.message.includes('must be a string')
+      )).toBe(true);
+    });
+  });
+
+  describe('optional field type validation', () => {
+    it('should reject non-boolean preservePath in group', () => {
+      const config = {
+        redirects: [
+          {
+            target: 'https://www.example.com',
+            type: 'permanent',
+            domains: ['old.com'],
+            preservePath: 'yes',
+          },
+        ],
+        settings: { preservePath: true, preserveQuery: true },
+      } as unknown as RedirectConfig;
+
+      const result = validateConfig(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e =>
+        e.path === 'redirects[0].preservePath' && e.message.includes('must be a boolean')
+      )).toBe(true);
+    });
+
+    it('should reject non-boolean preserveQuery in group', () => {
+      const config = {
+        redirects: [
+          {
+            target: 'https://www.example.com',
+            type: 'permanent',
+            domains: ['old.com'],
+            preserveQuery: 1,
+          },
+        ],
+        settings: { preservePath: true, preserveQuery: true },
+      } as unknown as RedirectConfig;
+
+      const result = validateConfig(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e =>
+        e.path === 'redirects[0].preserveQuery' && e.message.includes('must be a boolean')
+      )).toBe(true);
+    });
+
+    it('should reject non-boolean active in group', () => {
+      const config = {
+        redirects: [
+          {
+            target: 'https://www.example.com',
+            type: 'permanent',
+            domains: ['old.com'],
+            active: 'true',
+          },
+        ],
+        settings: { preservePath: true, preserveQuery: true },
+      } as unknown as RedirectConfig;
+
+      const result = validateConfig(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e =>
+        e.path === 'redirects[0].active' && e.message.includes('must be a boolean')
+      )).toBe(true);
+    });
+  });
+
+  describe('skipTest validation', () => {
+    it('should reject non-array skipTest', () => {
+      const config = {
+        redirects: [
+          {
+            target: 'https://www.example.com',
+            type: 'permanent',
+            domains: ['old.com'],
+            skipTest: 'old.com',
+          },
+        ],
+        settings: { preservePath: true, preserveQuery: true },
+      } as unknown as RedirectConfig;
+
+      const result = validateConfig(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e =>
+        e.path === 'redirects[0].skipTest' && e.message.includes('must be an array')
+      )).toBe(true);
+    });
+
+    it('should reject non-string skipTest entries', () => {
+      const config = {
+        redirects: [
+          {
+            target: 'https://www.example.com',
+            type: 'permanent',
+            domains: ['old.com'],
+            skipTest: [123],
+          },
+        ],
+        settings: { preservePath: true, preserveQuery: true },
+      } as unknown as RedirectConfig;
+
+      const result = validateConfig(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e =>
+        e.message.includes('skipTest entry must be a string')
+      )).toBe(true);
+    });
+  });
+
+  describe('redirects array validation', () => {
+    it('should reject missing redirects array', () => {
+      const config = {
+        settings: { preservePath: true, preserveQuery: true },
+      } as unknown as RedirectConfig;
+
+      const result = validateConfig(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e =>
+        e.path === 'redirects' && e.message.includes('is required')
+      )).toBe(true);
+    });
+
+    it('should reject non-array redirects', () => {
+      const config = {
+        redirects: 'not-an-array',
+        settings: { preservePath: true, preserveQuery: true },
+      } as unknown as RedirectConfig;
+
+      const result = validateConfig(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e =>
+        e.path === 'redirects' && e.message.includes('must be an array')
+      )).toBe(true);
+    });
+  });
+
+  describe('settings validation', () => {
+    it('should reject non-object settings', () => {
+      const config = {
+        redirects: [
+          {
+            target: 'https://www.example.com',
+            type: 'permanent',
+            domains: ['old.com'],
+          },
+        ],
+        settings: 'not-an-object',
+      } as unknown as RedirectConfig;
+
+      const result = validateConfig(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e =>
+        e.path === 'settings' && e.message.includes('must be an object')
+      )).toBe(true);
+    });
+
+    it('should reject non-boolean preservePath in settings', () => {
+      const config = {
+        redirects: [
+          {
+            target: 'https://www.example.com',
+            type: 'permanent',
+            domains: ['old.com'],
+          },
+        ],
+        settings: { preservePath: 'yes', preserveQuery: true },
+      } as unknown as RedirectConfig;
+
+      const result = validateConfig(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e =>
+        e.path === 'settings.preservePath' && e.message.includes('must be a boolean')
+      )).toBe(true);
+    });
+
+    it('should reject non-boolean preserveQuery in settings', () => {
+      const config = {
+        redirects: [
+          {
+            target: 'https://www.example.com',
+            type: 'permanent',
+            domains: ['old.com'],
+          },
+        ],
+        settings: { preservePath: true, preserveQuery: 0 },
+      } as unknown as RedirectConfig;
+
+      const result = validateConfig(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e =>
+        e.path === 'settings.preserveQuery' && e.message.includes('must be a boolean')
+      )).toBe(true);
+    });
+  });
+});

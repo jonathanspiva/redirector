@@ -293,3 +293,152 @@ describe('generateFunctionCode', () => {
     expect(code).toContain('preserveQuery: false');
   });
 });
+
+describe('RedirectStack with multiple domains sharing target', () => {
+  it('should reuse CloudFront Function for domains with same target', () => {
+    const sharedTargetConfigPath = path.join(__dirname, 'test-shared-target.yaml');
+    const sharedTargetConfig = {
+      redirects: [
+        {
+          target: 'https://www.example.com',
+          type: 'permanent',
+          domains: ['old1.com', 'old2.com', 'old3.com'],
+        },
+      ],
+      settings: {
+        preservePath: true,
+        preserveQuery: true,
+      },
+    };
+
+    fs.writeFileSync(sharedTargetConfigPath, yaml.stringify(sharedTargetConfig));
+
+    try {
+      const app = new cdk.App({
+        context: {
+          'hosted-zone:account=123456789012:domainName=old1.com:region=us-east-1': {
+            Id: '/hostedzone/Z1',
+            Name: 'old1.com.',
+          },
+          'hosted-zone:account=123456789012:domainName=old2.com:region=us-east-1': {
+            Id: '/hostedzone/Z2',
+            Name: 'old2.com.',
+          },
+          'hosted-zone:account=123456789012:domainName=old3.com:region=us-east-1': {
+            Id: '/hostedzone/Z3',
+            Name: 'old3.com.',
+          },
+        },
+      });
+      const stack = new RedirectStack(app, 'SharedTargetStack', {
+        configPath: sharedTargetConfigPath,
+        env: { account: '123456789012', region: 'us-east-1' },
+      });
+      const template = Template.fromStack(stack);
+
+      // Should have 3 distributions (one per domain)
+      template.resourceCountIs('AWS::CloudFront::Distribution', 3);
+      // But only 1 CloudFront Function (shared target)
+      template.resourceCountIs('AWS::CloudFront::Function', 1);
+    } finally {
+      fs.unlinkSync(sharedTargetConfigPath);
+    }
+  });
+});
+
+describe('RedirectStack with wildcard domains', () => {
+  it('should handle wildcard domain correctly', () => {
+    const wildcardConfigPath = path.join(__dirname, 'test-wildcard.yaml');
+    const wildcardConfig = {
+      redirects: [
+        {
+          target: 'https://www.example.com',
+          type: 'permanent',
+          domains: ['*.old-brand.com'],
+        },
+      ],
+      settings: {
+        preservePath: true,
+        preserveQuery: true,
+      },
+    };
+
+    fs.writeFileSync(wildcardConfigPath, yaml.stringify(wildcardConfig));
+
+    try {
+      const app = new cdk.App({
+        context: {
+          'hosted-zone:account=123456789012:domainName=old-brand.com:region=us-east-1': {
+            Id: '/hostedzone/ZWILDCARD',
+            Name: 'old-brand.com.',
+          },
+        },
+      });
+      const stack = new RedirectStack(app, 'WildcardStack', {
+        configPath: wildcardConfigPath,
+        env: { account: '123456789012', region: 'us-east-1' },
+      });
+      const template = Template.fromStack(stack);
+
+      // Should create certificate for wildcard domain
+      template.hasResourceProperties('AWS::CertificateManager::Certificate', {
+        DomainName: '*.old-brand.com',
+      });
+
+      // Should create distribution with wildcard
+      template.hasResourceProperties('AWS::CloudFront::Distribution', {
+        DistributionConfig: {
+          Aliases: ['*.old-brand.com'],
+        },
+      });
+    } finally {
+      fs.unlinkSync(wildcardConfigPath);
+    }
+  });
+});
+
+describe('RedirectStack with subdomains', () => {
+  it('should handle subdomain correctly', () => {
+    const subdomainConfigPath = path.join(__dirname, 'test-subdomain.yaml');
+    const subdomainConfig = {
+      redirects: [
+        {
+          target: 'https://www.example.com',
+          type: 'permanent',
+          domains: ['blog.old-brand.com'],
+        },
+      ],
+      settings: {
+        preservePath: true,
+        preserveQuery: true,
+      },
+    };
+
+    fs.writeFileSync(subdomainConfigPath, yaml.stringify(subdomainConfig));
+
+    try {
+      const app = new cdk.App({
+        context: {
+          // Zone lookup will try subdomain first, then parent
+          'hosted-zone:account=123456789012:domainName=blog.old-brand.com:region=us-east-1': {
+            Id: '/hostedzone/ZSUB',
+            Name: 'blog.old-brand.com.',
+          },
+        },
+      });
+      const stack = new RedirectStack(app, 'SubdomainStack', {
+        configPath: subdomainConfigPath,
+        env: { account: '123456789012', region: 'us-east-1' },
+      });
+      const template = Template.fromStack(stack);
+
+      // Should create resources for subdomain
+      template.resourceCountIs('AWS::CloudFront::Distribution', 1);
+      template.hasResourceProperties('AWS::CertificateManager::Certificate', {
+        DomainName: 'blog.old-brand.com',
+      });
+    } finally {
+      fs.unlinkSync(subdomainConfigPath);
+    }
+  });
+});
