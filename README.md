@@ -1,16 +1,15 @@
 # Domain Redirector
 
-An AWS-native service that manages HTTP redirects for multiple domains using CloudFront, CloudFront Functions, and KeyValueStore. Configuration is managed via a simple YAML file, making it accessible to non-developers.
+An AWS-native service that manages HTTP redirects for multiple domains using CloudFront and CloudFront Functions. Configuration is managed via a simple YAML file, making it accessible to non-developers.
 
 ## Overview
 
-This service reads from a YAML configuration file and automatically provisions:
+This service reads from a YAML configuration file and automatically provisions **one CloudFront distribution per domain**, each with:
 
-- **CloudFront Distribution** — Single distribution handling all domains
-- **CloudFront Function** — Edge function that performs redirects based on Host header
-- **CloudFront KeyValueStore** — Low-latency datastore for redirect mappings (scales to thousands of domains)
-- **ACM Certificates** — SSL/TLS certificates covering all configured domains
-- **Route 53 Records** — A/AAAA records pointing domains to CloudFront
+- **CloudFront Distribution** — Dedicated distribution for each source domain
+- **ACM Certificate** — Single-domain certificate (no complex multi-domain management)
+- **CloudFront Function** — Shared edge function that performs redirects
+- **Route 53 Records** — A/AAAA records pointing each domain to its distribution
 
 Changes to the configuration file trigger automatic deployment via AWS CodePipeline and CodeBuild.
 
@@ -29,42 +28,52 @@ Changes to the configuration file trigger automatic deployment via AWS CodePipel
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                                 AWS                                      │
 │                                                                          │
+│  For each domain in redirects.yaml:                                     │
 │  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │                    CloudFront Distribution                          │ │
-│  │                    (all domains as CNAMEs)                          │ │
-│  └─────────────────────────────┬──────────────────────────────────────┘ │
-│                                │                                         │
-│              ┌─────────────────┼─────────────────┐                      │
-│              ▼                 ▼                 ▼                      │
-│  ┌─────────────────┐  ┌───────────────┐  ┌─────────────────┐           │
-│  │   CloudFront    │  │  KeyValueStore │  │  ACM Certificates│           │
-│  │    Function     │◀─│  (redirect     │  │  (up to 100      │           │
-│  │  (viewer-request)│  │   mappings)    │  │   domains each)  │           │
-│  └─────────────────┘  └───────────────┘  └─────────────────┘           │
+│  │  old-brand.com                                                      │ │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │ │
+│  │  │  CloudFront  │  │     ACM      │  │   Route 53   │              │ │
+│  │  │ Distribution │──│ Certificate  │  │   A/AAAA     │              │ │
+│  │  └──────┬───────┘  └──────────────┘  └──────────────┘              │ │
+│  │         │                                                           │ │
+│  │         ▼                                                           │ │
+│  │  ┌──────────────┐                                                   │ │
+│  │  │  CloudFront  │ ◄─── Shared across all distributions              │ │
+│  │  │   Function   │      (returns redirect response)                  │ │
+│  │  └──────────────┘                                                   │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
 │                                                                          │
-│  ┌─────────────────┐                                                    │
-│  │   Route 53      │  A/AAAA records pointing to CloudFront             │
-│  │   Records       │                                                    │
-│  └─────────────────┘                                                    │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │  legacy-site.net  (same pattern...)                                 │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │  enterprise-old.com  (same pattern...)                              │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Why KeyValueStore?
+### Why One Distribution Per Domain?
 
-CloudFront Functions have a **10 KB code size limit**, which is quickly exceeded when hardcoding hundreds of redirect mappings. CloudFront KeyValueStore solves this:
+This architecture creates a dedicated CloudFront distribution for each source domain. While this seems like more resources, it **dramatically simplifies certificate management**:
 
-| Approach | Limit | Best For |
-|----------|-------|----------|
-| Hardcoded in function | 10 KB code limit | <50 simple redirects |
-| **KeyValueStore** | 5 MB total | Hundreds/thousands of redirects |
+| Approach | Certificate Complexity | Scaling |
+|----------|------------------------|---------|
+| Single distribution, multi-domain certs | Complex (max 100 SANs per cert, must track which domain is on which cert, rebuild certs when domains change) | Hits limits quickly |
+| **One distribution per domain** | Simple (1 domain = 1 cert, add/remove domains independently) | Linear, predictable |
 
-KeyValueStore provides:
-- **Sub-millisecond lookups** at the edge
-- **Dynamic updates** without redeploying the function
-- **5 MB capacity** — easily handles 1000+ domains
+Benefits:
+- **No certificate juggling** — each domain gets its own ACM certificate
+- **Isolated changes** — adding domain #51 doesn't touch domains 1-50
+- **Clean removal** — deleting a domain removes only its resources
+- **Incremental deploys** — CDK only creates/updates changed resources
+
+### How the Redirect Works
+
+A single CloudFront Function is shared across all distributions. It uses KeyValueStore to look up where each domain should redirect:
 
 ```javascript
-// How the CloudFront Function works
 import cf from 'cloudfront';
 const kv = cf.kvs();
 
@@ -82,6 +91,8 @@ async function handler(event) {
   // ... fallback handling
 }
 ```
+
+KeyValueStore provides sub-millisecond lookups at the edge and allows updating redirect targets without redeploying the function.
 
 ## Quick Start
 
@@ -176,7 +187,7 @@ redirector/
     ├── cdk.json
     ├── tsconfig.json
     └── lib/
-        ├── redirect-stack.ts       # CloudFront + Function + KeyValueStore
+        ├── redirect-stack.ts       # Per-domain distributions + shared function
         └── pipeline-stack.ts       # CodePipeline + CodeBuild infrastructure
 ```
 
@@ -238,13 +249,23 @@ After initial setup, all future changes to `redirects.yaml` will be deployed aut
 
 ## AWS Service Limits
 
+This architecture stays well within AWS defaults for typical usage (<250 domains).
+
+### CloudFront Distributions
+
+| Quota | Default | Notes |
+|-------|---------|-------|
+| Distributions per account | 200 | Request increase for more domains |
+
+For most users (under 200 domains), no quota increase is needed.
+
 ### ACM Certificates
 
-| Quota | Default | Maximum |
-|-------|---------|---------|
-| Domains per certificate | 10 | 100 (request increase via Service Quotas) |
+| Quota | Default | Notes |
+|-------|---------|-------|
+| Certificates per account | 2,500 | More than sufficient |
 
-For 250 domains, the service automatically creates multiple certificates (3 certificates for 250 domains).
+With one certificate per domain, you're well under this limit.
 
 ### CloudFront KeyValueStore
 
@@ -253,31 +274,94 @@ For 250 domains, the service automatically creates multiple certificates (3 cert
 | Total size | 5 MB |
 | Key size | 512 bytes |
 | Value size | 1 KB |
-| Stores per function | 1 |
 
-With an average of ~100 bytes per domain entry, KeyValueStore can handle **50,000+ domains**.
+With ~100 bytes per domain entry, KeyValueStore can handle **50,000+ domains**.
 
 ### CloudFront Functions
 
 | Resource | Limit |
 |----------|-------|
+| Functions per account | 25 (default), increasable |
 | Code size | 10 KB |
-| Runtime | cloudfront-js-2.0 |
 | Execution time | <1 ms typical |
+
+This service uses **one shared function** across all distributions, so the function limit is not a concern.
 
 ## AWS Resources Created
 
-| Resource | Description | Estimated Cost |
-|----------|-------------|----------------|
-| CloudFront Distribution | CDN for all domains | ~$1-5/month (traffic dependent) |
-| CloudFront Function | Redirect logic at edge | ~$0.10 per 1M requests |
-| CloudFront KeyValueStore | Redirect mappings | ~$0.05/month + reads |
-| ACM Certificates | SSL/TLS (multiple if >100 domains) | Free |
-| Route 53 Records | DNS entries | Included in hosted zone cost |
-| CodePipeline | CI/CD pipeline | $1/month |
-| CodeBuild | Build environment | ~$0.01 per deploy |
+**Per domain:**
+| Resource | Description |
+|----------|-------------|
+| CloudFront Distribution | Dedicated CDN for the domain |
+| ACM Certificate | Single-domain SSL/TLS certificate (free) |
+| Route 53 Records | A/AAAA records pointing to distribution |
 
-**Total estimated cost: $3-10/month** (depends on traffic volume)
+**Shared (one total):**
+| Resource | Description |
+|----------|-------------|
+| CloudFront Function | Redirect logic at edge |
+| CloudFront KeyValueStore | Redirect target mappings |
+| CodePipeline | CI/CD pipeline |
+| CodeBuild | Build environment |
+
+### Cost Estimates
+
+CloudFront pricing is **usage-based, not per-distribution**, so costs scale with traffic, not domain count:
+
+| Traffic Level | Monthly Requests | Estimated Cost |
+|---------------|------------------|----------------|
+| Low | 100K | ~$2/month |
+| Medium | 1M | ~$3/month |
+| High | 10M | ~$12/month |
+
+Cost breakdown:
+- HTTPS requests: $0.01 per 10,000
+- CloudFront Function: $0.10 per 1M invocations
+- ACM Certificates: Free
+- KeyValueStore: ~$0.05/month
+- CodePipeline: $1/month
+- Route 53: Included in hosted zone cost
+
+### Cost Tracking with Tags
+
+All resources are tagged for easy cost tracking in AWS Billing Dashboard and Cost Explorer.
+
+**Default tags (applied automatically):**
+
+| Tag | Value | Purpose |
+|-----|-------|---------|
+| `Project` | `domain-redirector` | Filter all redirector costs |
+| `ManagedBy` | `cdk` | Identify IaC-managed resources |
+
+**Optional tags** (configure in `cdk/lib/config.ts`):
+
+| Tag | Example | Purpose |
+|-----|---------|---------|
+| `Environment` | `production` | Separate prod/staging costs |
+| `CostCenter` | `marketing` | Internal accounting |
+| `Owner` | `platform-team` | Team responsibility |
+
+**How tags are applied in CDK:**
+
+```typescript
+import { Tags } from 'aws-cdk-lib';
+
+// In your stack constructor
+Tags.of(this).add('Project', 'domain-redirector');
+Tags.of(this).add('ManagedBy', 'cdk');
+```
+
+**To view costs by project:**
+
+1. **Activate cost allocation tags** (one-time setup):
+   - Go to AWS Billing → Cost Allocation Tags
+   - Find `Project` tag and click "Activate"
+   - Tags appear in reports within 24 hours
+
+2. **View in Cost Explorer**:
+   - Go to AWS Cost Explorer
+   - Group by → Tag → `Project`
+   - Filter by `Project` = `domain-redirector`
 
 ## Validation
 
@@ -343,16 +427,18 @@ This project was inspired by and builds upon ideas from:
 
 | Alternative | Why Not |
 |-------------|---------|
+| Single distribution, multi-domain certs | Complex certificate management — can't add >100 SANs per cert, must rebuild certs when domains change, need state tracking |
 | Lambda@Edge | Slower (~5ms vs <1ms), more expensive, region-locked deployment |
 | S3 Website Redirect | Requires one bucket per redirect config, no dynamic logic |
 | ALB Redirect Rules | Requires running infrastructure, significantly more expensive |
 | API Gateway | Overkill for simple redirects, higher latency |
 
-CloudFront Functions + KeyValueStore provides the best combination of:
+One distribution per domain + CloudFront Functions provides:
+- **Simplicity**: Add a domain = create one distribution + one cert. No complex certificate management.
 - **Performance**: Sub-millisecond redirects at the edge
-- **Cost**: ~$0.10 per million requests
-- **Scale**: Handles thousands of domains
-- **Simplicity**: No servers to manage
+- **Cost**: Same as single-distribution (~$0.10 per million requests) — CloudFront pricing is usage-based
+- **Isolation**: Problems with one domain don't affect others
+- **Clean scaling**: Works the same way whether you have 5 domains or 200
 
 ## Contributing
 
