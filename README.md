@@ -78,14 +78,21 @@ Each unique destination target gets its own CloudFront Function. The function is
 ```javascript
 // Auto-generated: redirect-to-brand-a.js
 // All domains using this function redirect to the same target
-var defined = { target: "https://www.brand-a.com", statusCode: 301 };
+var defined = {
+  target: "https://www.brand-a.com",
+  statusCode: 301,
+  preservePath: true,
+  preserveQuery: true
+};
 
 function handler(event) {
+  var url = defined.target;
+  if (defined.preservePath) url += event.request.uri;
+  if (defined.preserveQuery && event.request.querystring)
+    url += "?" + event.request.querystring;
   return {
     statusCode: defined.statusCode,
-    headers: {
-      location: { value: defined.target + event.request.uri }
-    }
+    headers: { location: { value: url } }
   };
 }
 ```
@@ -126,7 +133,7 @@ redirects:
     description: "Legacy consumer brand domains"
     domains:
       - old-brand.com
-      - www.old-brand.com
+      - "*.old-brand.com"    # Wildcard catches all subdomains
       - legacy-site.net
 
   # Another permanent redirect to a different destination
@@ -137,17 +144,27 @@ redirects:
       - enterprise-old.com
       - b2b-legacy.io
 
+  # Disabled redirect - resources won't be deployed
+  - target: "https://www.brand-c.com"
+    type: permanent
+    active: false
+    description: "Prepared for future migration (not yet active)"
+    domains:
+      - future-domain.com
+
   # Temporary redirect (302) - campaigns, testing, seasonal
+  # Override path preservation for landing page
   - target: "https://www.brand-a.com/summer-sale"
     type: temporary
     description: "Summer 2024 campaign"
+    preservePath: false   # Always land on /summer-sale, ignore original path
     domains:
       - summer-deals.com
       - hot-sale.com
 
 settings:
-  preservePath: true    # old.com/page → target.com/page
-  preserveQuery: true   # old.com?ref=x → target.com?ref=x
+  preservePath: true    # Default: old.com/page → target.com/page
+  preserveQuery: true   # Default: old.com?ref=x → target.com?ref=x
 ```
 
 ### Redirect Types
@@ -157,6 +174,49 @@ settings:
 | `permanent` | 301 | Domain is retired forever | Transfers SEO value to target |
 | `temporary` | 302 | Campaigns, testing, seasonal | Original domain keeps SEO value |
 
+### Path and Query Preservation
+
+By default, redirects preserve the original path and query string:
+- `old.com/page?ref=123` → `target.com/page?ref=123`
+
+You can override this per redirect group:
+
+```yaml
+  - target: "https://www.brand-a.com/landing"
+    preservePath: false   # old.com/anything → target.com/landing
+    preserveQuery: false  # Query params are dropped
+    domains: [...]
+```
+
+| Setting | Default | Effect |
+|---------|---------|--------|
+| `preservePath` | `true` | Appends original path to target |
+| `preserveQuery` | `true` | Appends original query string to target |
+
+Per-rule settings override the global `settings` values.
+
+### Enabling and Disabling Redirects
+
+Use the `active` field to disable a redirect without removing it from config:
+
+```yaml
+  - target: "https://www.brand-a.com"
+    active: false   # Disabled - no resources deployed
+    description: "Temporarily disabled for testing"
+    domains:
+      - old-brand.com
+```
+
+| `active` Value | Behavior |
+|----------------|----------|
+| `true` (default) | Resources are created/maintained |
+| `false` | Resources are not created; existing resources are removed |
+
+**Use cases:**
+- Temporarily disable a redirect while debugging
+- Prepare a redirect in advance without activating it
+- Keep a record of redirects in config even when not in use
+
 ### Adding a New Domain
 
 ```yaml
@@ -165,6 +225,28 @@ domains:
   - existing-domain.com
   - new-domain.com        # ← Add here
 ```
+
+### Wildcard Domains
+
+Use wildcards to catch all subdomains:
+
+```yaml
+  - target: "https://www.brand-a.com"
+    domains:
+      - old-brand.com
+      - "*.old-brand.com"   # Catches any subdomain
+```
+
+**Important:** Wildcards don't match the apex domain. For full coverage, include both:
+- `old-brand.com` — matches `old-brand.com`
+- `*.old-brand.com` — matches `www.old-brand.com`, `mail.old-brand.com`, `anything.old-brand.com`
+
+**How it works:**
+- ACM issues a wildcard certificate (`*.old-brand.com`)
+- CloudFront accepts the wildcard as a CNAME
+- Route 53 creates a wildcard A/AAAA record
+
+**Use case:** Defensive domain strategy — redirect any subdomain, including ones you haven't anticipated, without listing each explicitly.
 
 ### Creating a New Redirect Group
 
@@ -252,6 +334,41 @@ redirector/
    ```
 
 After initial setup, all future changes to `redirects.yaml` will be deployed automatically when pushed to `main`.
+
+## Resource Lifecycle
+
+### How CDK Handles Changes
+
+CDK tracks all resources it creates. When you modify `redirects.yaml`, the next deployment automatically:
+
+| Change | CDK Action |
+|--------|------------|
+| Add a domain | Creates new distribution, certificate, Route 53 records |
+| Remove a domain | Deletes distribution, certificate, Route 53 records |
+| Set `active: false` | Same as removing — deletes all resources for that group |
+| Set `active: true` | Same as adding — creates all resources |
+| Change target URL | Updates existing distributions to use different function |
+| Add new target | Creates new CloudFront Function |
+| Remove last domain using a target | Deletes the orphaned CloudFront Function |
+
+### Cleanup Behavior
+
+When a domain is removed or disabled:
+
+1. **Route 53 records** — Deleted immediately (DNS stops resolving)
+2. **CloudFront Distribution** — Disabled, then deleted (may take a few minutes)
+3. **ACM Certificate** — Deleted after distribution removal
+4. **CloudFront Function** — Deleted only if no other domains reference it
+
+**Important:** Removing a domain means requests to that domain will fail immediately after DNS propagation. Ensure the domain is no longer in use before removing.
+
+### Orphan Prevention
+
+CDK's declarative model ensures no orphaned resources:
+- If it's in `redirects.yaml` and `active: true` → resources exist
+- If it's not in `redirects.yaml` or `active: false` → resources are removed
+
+You never need to manually clean up AWS resources.
 
 ## AWS Service Limits
 
@@ -367,7 +484,7 @@ The build process validates `redirects.yaml` before deployment:
 
 - YAML syntax check
 - Required fields present
-- Valid domain format
+- Valid domain format (including wildcards like `*.example.com`)
 - No duplicate domains
 - Target URLs are valid
 
