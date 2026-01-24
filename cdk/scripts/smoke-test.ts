@@ -35,8 +35,6 @@ async function testDomain(config: ResolvedDomainConfig): Promise<TestResult> {
 
     const request = https.get(url, {
       timeout: 10000,
-      // Don't follow redirects
-      maxRedirects: 0,
     }, (response) => {
       const statusCode = response.statusCode;
       const location = response.headers.location;
