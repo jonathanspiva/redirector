@@ -1,7 +1,12 @@
-# Domain Redirector Configuration
-# ================================
-# Edit this file to manage domain redirects.
-# Changes are automatically deployed when pushed to main.
+# Domain Redirector Configuration - EXAMPLE
+# ==========================================
+# This is an example configuration file. To use:
+#
+# 1. Copy this file to redirects.yaml in your project root
+# 2. Replace the example domains with your actual domains
+# 3. Ensure your domains have hosted zones in Route 53
+#
+# For submodule setup, create redirects.yaml in your private repo root.
 
 redirects:
   # Legacy brand domains -> main site

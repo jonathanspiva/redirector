@@ -339,6 +339,70 @@ redirector/
 
 After initial setup, all future changes to `redirects.yaml` will be deployed automatically when pushed to `main`.
 
+### Using as a Submodule (Private Config)
+
+If you want to keep your redirect configuration private while using this open source tool, use the submodule approach:
+
+1. **Create a private repository** for your configuration:
+   ```bash
+   mkdir my-redirects && cd my-redirects
+   git init
+   ```
+
+2. **Add this repo as a submodule:**
+   ```bash
+   git submodule add https://github.com/jonathanspiva/redirector.git tool
+   ```
+
+3. **Create your private `redirects.yaml`** in the root:
+   ```yaml
+   # my-redirects/redirects.yaml
+   redirects:
+     - target: "https://www.mycompany.com"
+       type: permanent
+       domains:
+         - old-domain.com
+   settings:
+     preservePath: true
+     preserveQuery: true
+   ```
+
+4. **Create a wrapper `package.json`:**
+   ```json
+   {
+     "name": "my-redirects",
+     "scripts": {
+       "install": "cd tool/cdk && npm install",
+       "test": "cd tool/cdk && npm test",
+       "deploy": "cd tool/cdk && npx cdk deploy RedirectStack",
+       "validate": "cd tool/cdk && npm run validate"
+     }
+   }
+   ```
+
+5. **Deploy:**
+   ```bash
+   npm install
+   npm run deploy
+   ```
+
+**Directory structure:**
+```
+my-redirects/           # Your private repo
+├── redirects.yaml      # Your private config (auto-detected)
+├── package.json        # Wrapper scripts
+└── tool/               # Submodule (this public repo)
+    ├── cdk/
+    └── ...
+```
+
+**Updating the tool:**
+```bash
+git submodule update --remote tool
+git add tool
+git commit -m "Update redirector tool"
+```
+
 ## Resource Lifecycle
 
 ### How CDK Handles Changes

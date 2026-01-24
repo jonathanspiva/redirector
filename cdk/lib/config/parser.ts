@@ -12,6 +12,56 @@ const DEFAULT_SETTINGS: Settings = {
 };
 
 /**
+ * Resolve the configuration file path.
+ *
+ * Priority:
+ * 1. Explicitly passed configPath
+ * 2. REDIRECTS_CONFIG environment variable
+ * 3. redirects.yaml in current working directory
+ * 4. redirects.yaml in parent directory (submodule setup)
+ * 5. redirects.example.yaml in repo root (development/demo)
+ */
+function resolveConfigPath(configPath?: string): string {
+  // 1. Explicit path
+  if (configPath) {
+    return configPath;
+  }
+
+  // 2. Environment variable
+  if (process.env.REDIRECTS_CONFIG) {
+    return process.env.REDIRECTS_CONFIG;
+  }
+
+  // 3. Current working directory
+  const cwdPath = path.join(process.cwd(), 'redirects.yaml');
+  if (fs.existsSync(cwdPath)) {
+    return cwdPath;
+  }
+
+  // 4. Parent directory (submodule setup: private-repo/tool/cdk)
+  const parentPath = path.join(process.cwd(), '..', 'redirects.yaml');
+  if (fs.existsSync(parentPath)) {
+    return parentPath;
+  }
+
+  // 5. Two levels up (submodule setup: private-repo/tool/cdk when running from cdk dir)
+  const grandparentPath = path.join(process.cwd(), '..', '..', 'redirects.yaml');
+  if (fs.existsSync(grandparentPath)) {
+    return grandparentPath;
+  }
+
+  // 6. Example config in repo (development/demo)
+  const examplePath = path.join(__dirname, '..', '..', '..', 'redirects.example.yaml');
+  if (fs.existsSync(examplePath)) {
+    return examplePath;
+  }
+
+  throw new Error(
+    'No configuration file found. Create redirects.yaml or set REDIRECTS_CONFIG environment variable.'
+  );
+}
+
+/**
  * Load and parse the redirects.yaml configuration file.
  *
  * @param configPath - Path to the YAML configuration file
@@ -19,7 +69,7 @@ const DEFAULT_SETTINGS: Settings = {
  * @throws Error if file cannot be read or parsed
  */
 export function loadConfig(configPath?: string): RedirectConfig {
-  const resolvedPath = configPath ?? path.join(process.cwd(), '..', 'redirects.yaml');
+  const resolvedPath = resolveConfigPath(configPath);
 
   if (!fs.existsSync(resolvedPath)) {
     throw new Error(`Configuration file not found: ${resolvedPath}`);
