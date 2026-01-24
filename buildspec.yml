@@ -16,8 +16,7 @@ phases:
     commands:
       - echo "Running security audit..."
       - cd cdk && npm audit --audit-level=high || echo "Security audit found vulnerabilities - review before deploying to production"
-      - echo "Validating configuration..."
-      - cd cdk && npm run validate -- ../redirects.yaml
+      # Note: Config validation is performed during CDK synthesis, so we skip redundant validation here
       - echo "Running unit tests..."
       - cd cdk && npm test
 

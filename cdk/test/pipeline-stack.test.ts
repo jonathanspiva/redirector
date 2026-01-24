@@ -89,11 +89,12 @@ describe('PipelineStack', () => {
       });
     });
 
-    it('should use Node.js environment', () => {
+    it('should use ARM environment with medium compute', () => {
       template.hasResourceProperties('AWS::CodeBuild::Project', {
         Environment: {
-          Image: Match.stringLikeRegexp('standard:7.0'),
-          Type: 'LINUX_CONTAINER',
+          Image: Match.stringLikeRegexp('amazonlinux2-aarch64-standard'),
+          Type: 'ARM_CONTAINER',
+          ComputeType: 'BUILD_GENERAL1_MEDIUM',
         },
       });
     });

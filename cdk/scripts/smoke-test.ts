@@ -174,6 +174,7 @@ async function testWithRetry(
 
 /**
  * Run smoke tests for all configured domains.
+ * Tests run in parallel for faster execution.
  */
 async function runSmokeTests(configPath?: string): Promise<void> {
   console.log('Loading configuration...\n');
@@ -192,28 +193,28 @@ async function runSmokeTests(configPath?: string): Promise<void> {
     console.log('');
   }
 
-  console.log(`Testing ${testableDomains.length} domain(s)...\n`);
+  console.log(`Testing ${testableDomains.length} domain(s) in parallel...\n`);
 
-  const results: TestResult[] = [];
+  // Run all tests in parallel for faster execution
+  const results = await Promise.all(
+    testableDomains.map(domainConfig => testWithRetry(domainConfig))
+  );
+
   let passCount = 0;
   let failCount = 0;
   let warnCount = 0;
 
-  for (const domainConfig of testableDomains) {
-    process.stdout.write(`Testing ${domainConfig.domain}... `);
-
-    const result = await testWithRetry(domainConfig);
-    results.push(result);
-
+  // Process and display results
+  for (const result of results) {
     if (result.passed) {
       passCount++;
-      console.log(`\u2713 ${result.message}`);
+      console.log(`\u2713 ${result.domain}: ${result.message}`);
     } else if (result.error === 'timeout' || result.error?.includes('ENOTFOUND')) {
       warnCount++;
-      console.log(`\u26A0 ${result.message} (may still be propagating)`);
+      console.log(`\u26A0 ${result.domain}: ${result.message} (may still be propagating)`);
     } else {
       failCount++;
-      console.log(`\u2717 ${result.message}`);
+      console.log(`\u2717 ${result.domain}: ${result.message}`);
     }
   }
 

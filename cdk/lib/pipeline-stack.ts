@@ -81,12 +81,13 @@ export class PipelineStack extends cdk.Stack {
     });
 
     // CodeBuild project for validation, deployment, and testing
+    // Using ARM compute for better price/performance ratio
     const buildProject = new codebuild.PipelineProject(this, 'BuildProject', {
       projectName: 'domain-redirector-build',
       description: 'Validate, deploy, and test domain redirector',
       environment: {
-        buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
-        computeType: codebuild.ComputeType.SMALL,
+        buildImage: codebuild.LinuxArmBuildImage.AMAZON_LINUX_2_STANDARD_3_0,
+        computeType: codebuild.ComputeType.MEDIUM,
         privileged: false, // Explicitly disable privileged mode
       },
       buildSpec: codebuild.BuildSpec.fromSourceFilename('buildspec.yml'),
