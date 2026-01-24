@@ -57,6 +57,10 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
         },
         "Tags": [
           {
+            "Key": "Environment",
+            "Value": "prod",
+          },
+          {
             "Key": "ManagedBy",
             "Value": "cdk",
           },
@@ -150,6 +154,10 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
         },
         "Tags": [
           {
+            "Key": "Environment",
+            "Value": "prod",
+          },
+          {
             "Key": "ManagedBy",
             "Value": "cdk",
           },
@@ -228,6 +236,10 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
         },
         "Tags": [
           {
+            "Key": "Environment",
+            "Value": "prod",
+          },
+          {
             "Key": "ManagedBy",
             "Value": "cdk",
           },
@@ -286,6 +298,10 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
           "Version": "2012-10-17",
         },
         "Tags": [
+          {
+            "Key": "Environment",
+            "Value": "prod",
+          },
           {
             "Key": "ManagedBy",
             "Value": "cdk",
@@ -685,6 +701,10 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
         },
         "Tags": [
           {
+            "Key": "Environment",
+            "Value": "prod",
+          },
+          {
             "Key": "ManagedBy",
             "Value": "cdk",
           },
@@ -813,6 +833,10 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
         ],
         "Tags": [
           {
+            "Key": "Environment",
+            "Value": "prod",
+          },
+          {
             "Key": "ManagedBy",
             "Value": "cdk",
           },
@@ -859,6 +883,10 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
           "Version": "2012-10-17",
         },
         "Tags": [
+          {
+            "Key": "Environment",
+            "Value": "prod",
+          },
           {
             "Key": "ManagedBy",
             "Value": "cdk",
@@ -1020,6 +1048,10 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
           "Version": "2012-10-17",
         },
         "Tags": [
+          {
+            "Key": "Environment",
+            "Value": "prod",
+          },
           {
             "Key": "ManagedBy",
             "Value": "cdk",
@@ -1286,6 +1318,10 @@ exports[`RedirectStack Snapshots should match CloudFormation template snapshot 1
         ],
         "Tags": [
           {
+            "Key": "Environment",
+            "Value": "prod",
+          },
+          {
             "Key": "ManagedBy",
             "Value": "cdk",
           },
@@ -1312,6 +1348,10 @@ exports[`RedirectStack Snapshots should match CloudFormation template snapshot 1
           },
         ],
         "Tags": [
+          {
+            "Key": "Environment",
+            "Value": "prod",
+          },
           {
             "Key": "ManagedBy",
             "Value": "cdk",
@@ -1377,6 +1417,10 @@ exports[`RedirectStack Snapshots should match CloudFormation template snapshot 1
         },
         "Tags": [
           {
+            "Key": "Environment",
+            "Value": "prod",
+          },
+          {
             "Key": "ManagedBy",
             "Value": "cdk",
           },
@@ -1435,6 +1479,10 @@ exports[`RedirectStack Snapshots should match CloudFormation template snapshot 1
           },
         },
         "Tags": [
+          {
+            "Key": "Environment",
+            "Value": "prod",
+          },
           {
             "Key": "ManagedBy",
             "Value": "cdk",
