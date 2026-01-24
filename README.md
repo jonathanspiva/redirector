@@ -11,6 +11,8 @@ This service reads from a YAML configuration file and automatically provisions *
 - **CloudFront Function** — One function per destination target (all domains redirecting to the same target share a function)
 - **Route 53 Records** — A/AAAA records pointing each domain to its distribution
 
+**Requirement:** Source domains must already have a hosted zone in Route 53. This service creates DNS records in existing hosted zones — it does not register domains or create hosted zones.
+
 Changes to the configuration file trigger automatic deployment via AWS CodePipeline and CodeBuild.
 
 ## Architecture
@@ -276,6 +278,7 @@ redirector/
 - Node.js 20+
 - AWS CDK CLI (`npm install -g aws-cdk`)
 - GitHub repository with CodeStar Connection configured
+- **Source domains must have hosted zones in Route 53** — This service creates DNS records in existing hosted zones. Domains hosted elsewhere (GoDaddy, Cloudflare, etc.) must be migrated to Route 53 first.
 
 ### Initial Deployment
 
@@ -502,6 +505,9 @@ Each redirect group must have:
 | Wildcards | `*.example.com` | `*.*.example.com`, `*example.com` |
 | No duplicates | — | Same domain in multiple groups |
 | Characters | `my-site.com`, `site123.com` | `my_site.com`, `site!.com` |
+| Route 53 hosted zone | Zone exists for domain | No hosted zone found |
+
+**Important:** Each domain must have a hosted zone in Route 53. The validation checks that the hosted zone exists before deployment. If you need to redirect a domain hosted elsewhere, first migrate it to Route 53 or set up a hosted zone with NS records pointing to Route 53.
 
 ### Target URL Validation
 
@@ -606,6 +612,16 @@ If smoke tests show warnings for new domains:
 1. This is normal — DNS and certificates take a few minutes to propagate
 2. Wait 5 minutes and manually test with `curl -I https://your-domain.com`
 3. If still failing after 10 minutes, check ACM certificate status in AWS Console
+
+### "No Hosted Zone Found" Error
+
+```
+✗ old-brand.com: no Route 53 hosted zone found
+```
+
+This domain isn't in Route 53. To fix:
+1. **If you own the domain:** Create a hosted zone in Route 53, then update your domain registrar's NS records to point to Route 53
+2. **If the domain is managed elsewhere:** This service requires Route 53. Either migrate DNS to Route 53 or use a different redirect solution for this domain
 
 ## Security
 
