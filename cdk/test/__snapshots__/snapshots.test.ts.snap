@@ -10,7 +10,190 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
   },
   "Parameters": {},
   "Resources": {
+    "ArtifactBucket7410C9EF": {
+      "DeletionPolicy": "Retain",
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "id": "AwsSolutions-S1",
+              "reason": "Artifact bucket is internal CI/CD infrastructure with encryption enabled. Access logging not required for build artifacts.",
+            },
+          ],
+        },
+      },
+      "Properties": {
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "KMSMasterKeyID": {
+                  "Fn::GetAtt": [
+                    "ArtifactKey8D84C5F0",
+                    "Arn",
+                  ],
+                },
+                "SSEAlgorithm": "aws:kms",
+              },
+            },
+          ],
+        },
+        "LifecycleConfiguration": {
+          "Rules": [
+            {
+              "ExpirationInDays": 90,
+              "NoncurrentVersionExpiration": {
+                "NoncurrentDays": 30,
+              },
+              "Status": "Enabled",
+            },
+          ],
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true,
+        },
+        "Tags": [
+          {
+            "Key": "ManagedBy",
+            "Value": "cdk",
+          },
+          {
+            "Key": "Project",
+            "Value": "domain-redirector",
+          },
+        ],
+        "VersioningConfiguration": {
+          "Status": "Enabled",
+        },
+      },
+      "Type": "AWS::S3::Bucket",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "ArtifactBucketPolicy4B4B7752": {
+      "Properties": {
+        "Bucket": {
+          "Ref": "ArtifactBucket7410C9EF",
+        },
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "s3:*",
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false",
+                },
+              },
+              "Effect": "Deny",
+              "Principal": {
+                "AWS": "*",
+              },
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "ArtifactBucket7410C9EF",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "ArtifactBucket7410C9EF",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+      },
+      "Type": "AWS::S3::BucketPolicy",
+    },
+    "ArtifactKey8D84C5F0": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "Description": "KMS key for pipeline artifact encryption",
+        "EnableKeyRotation": true,
+        "KeyPolicy": {
+          "Statement": [
+            {
+              "Action": "kms:*",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":iam::123456789012:root",
+                    ],
+                  ],
+                },
+              },
+              "Resource": "*",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "Tags": [
+          {
+            "Key": "ManagedBy",
+            "Value": "cdk",
+          },
+          {
+            "Key": "Project",
+            "Value": "domain-redirector",
+          },
+        ],
+      },
+      "Type": "AWS::KMS::Key",
+      "UpdateReplacePolicy": "Retain",
+    },
     "BuildProject097C5DB7": {
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "applies_to": [
+                "Resource::*",
+                "Resource::arn:aws:iam::<AWS::AccountId>:role/cdk-*",
+                "Resource::arn:aws:cloudformation:*:<AWS::AccountId>:stack/RedirectStack/*",
+                "Resource::arn:aws:cloudformation:*:<AWS::AccountId>:stack/CDKToolkit/*",
+                "Resource::arn:aws:s3:::cdk-*-assets-<AWS::AccountId>-*",
+                "Resource::arn:aws:s3:::cdk-*-assets-<AWS::AccountId>-*/*",
+                "Resource::arn:aws:ssm:*:<AWS::AccountId>:parameter/cdk-bootstrap/*",
+                "Resource::arn:aws:route53:::hostedzone/*",
+                "Resource::arn:aws:acm:us-east-1:<AWS::AccountId>:certificate/*",
+                "Resource::arn:aws:cloudfront::<AWS::AccountId>:distribution/*",
+                "Resource::arn:aws:cloudfront::<AWS::AccountId>:function/*",
+              ],
+              "id": "AwsSolutions-IAM5",
+              "reason": "CDK deployment requires wildcards for: (1) route53:List* requires wildcard per AWS API, (2) cdk-* role pattern for CDK bootstrap roles, (3) cloudformation stack paths with wildcard for stack versions, (4) cdk assets bucket pattern, (5) ssm parameters for CDK bootstrap",
+            },
+            {
+              "applies_to": [
+                "Resource::arn:<AWS::Partition>:logs:<AWS::Region>:<AWS::AccountId>:log-group:/aws/codebuild/<BuildProjectName>:*",
+                "Resource::arn:<AWS::Partition>:codebuild:<AWS::Region>:<AWS::AccountId>:report-group/<BuildProjectName>-*",
+              ],
+              "id": "AwsSolutions-IAM5",
+              "reason": "CodeBuild requires wildcard permissions for CloudWatch Logs and CodeBuild reports. These are auto-generated by CDK and scoped to the specific project.",
+            },
+          ],
+        },
+      },
       "Properties": {
         "Artifacts": {
           "Type": "CODEPIPELINE",
@@ -21,7 +204,7 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
         "Description": "Validate, deploy, and test domain redirector",
         "EncryptionKey": {
           "Fn::GetAtt": [
-            "PipelineArtifactsBucketEncryptionKey01D58D69",
+            "ArtifactKey8D84C5F0",
             "Arn",
           ],
         },
@@ -58,6 +241,37 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
       "Type": "AWS::CodeBuild::Project",
     },
     "BuildProjectRoleAA92C755": {
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "applies_to": [
+                "Resource::*",
+                "Resource::arn:aws:iam::<AWS::AccountId>:role/cdk-*",
+                "Resource::arn:aws:cloudformation:*:<AWS::AccountId>:stack/RedirectStack/*",
+                "Resource::arn:aws:cloudformation:*:<AWS::AccountId>:stack/CDKToolkit/*",
+                "Resource::arn:aws:s3:::cdk-*-assets-<AWS::AccountId>-*",
+                "Resource::arn:aws:s3:::cdk-*-assets-<AWS::AccountId>-*/*",
+                "Resource::arn:aws:ssm:*:<AWS::AccountId>:parameter/cdk-bootstrap/*",
+                "Resource::arn:aws:route53:::hostedzone/*",
+                "Resource::arn:aws:acm:us-east-1:<AWS::AccountId>:certificate/*",
+                "Resource::arn:aws:cloudfront::<AWS::AccountId>:distribution/*",
+                "Resource::arn:aws:cloudfront::<AWS::AccountId>:function/*",
+              ],
+              "id": "AwsSolutions-IAM5",
+              "reason": "CDK deployment requires wildcards for: (1) route53:List* requires wildcard per AWS API, (2) cdk-* role pattern for CDK bootstrap roles, (3) cloudformation stack paths with wildcard for stack versions, (4) cdk assets bucket pattern, (5) ssm parameters for CDK bootstrap",
+            },
+            {
+              "applies_to": [
+                "Resource::arn:<AWS::Partition>:logs:<AWS::Region>:<AWS::AccountId>:log-group:/aws/codebuild/<BuildProjectName>:*",
+                "Resource::arn:<AWS::Partition>:codebuild:<AWS::Region>:<AWS::AccountId>:report-group/<BuildProjectName>-*",
+              ],
+              "id": "AwsSolutions-IAM5",
+              "reason": "CodeBuild requires wildcard permissions for CloudWatch Logs and CodeBuild reports. These are auto-generated by CDK and scoped to the specific project.",
+            },
+          ],
+        },
+      },
       "Properties": {
         "AssumeRolePolicyDocument": {
           "Statement": [
@@ -85,6 +299,37 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
       "Type": "AWS::IAM::Role",
     },
     "BuildProjectRoleDefaultPolicy3E9F248C": {
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "applies_to": [
+                "Resource::*",
+                "Resource::arn:aws:iam::<AWS::AccountId>:role/cdk-*",
+                "Resource::arn:aws:cloudformation:*:<AWS::AccountId>:stack/RedirectStack/*",
+                "Resource::arn:aws:cloudformation:*:<AWS::AccountId>:stack/CDKToolkit/*",
+                "Resource::arn:aws:s3:::cdk-*-assets-<AWS::AccountId>-*",
+                "Resource::arn:aws:s3:::cdk-*-assets-<AWS::AccountId>-*/*",
+                "Resource::arn:aws:ssm:*:<AWS::AccountId>:parameter/cdk-bootstrap/*",
+                "Resource::arn:aws:route53:::hostedzone/*",
+                "Resource::arn:aws:acm:us-east-1:<AWS::AccountId>:certificate/*",
+                "Resource::arn:aws:cloudfront::<AWS::AccountId>:distribution/*",
+                "Resource::arn:aws:cloudfront::<AWS::AccountId>:function/*",
+              ],
+              "id": "AwsSolutions-IAM5",
+              "reason": "CDK deployment requires wildcards for: (1) route53:List* requires wildcard per AWS API, (2) cdk-* role pattern for CDK bootstrap roles, (3) cloudformation stack paths with wildcard for stack versions, (4) cdk assets bucket pattern, (5) ssm parameters for CDK bootstrap",
+            },
+            {
+              "applies_to": [
+                "Resource::arn:<AWS::Partition>:logs:<AWS::Region>:<AWS::AccountId>:log-group:/aws/codebuild/<BuildProjectName>:*",
+                "Resource::arn:<AWS::Partition>:codebuild:<AWS::Region>:<AWS::AccountId>:report-group/<BuildProjectName>-*",
+              ],
+              "id": "AwsSolutions-IAM5",
+              "reason": "CodeBuild requires wildcard permissions for CloudWatch Logs and CodeBuild reports. These are auto-generated by CDK and scoped to the specific project.",
+            },
+          ],
+        },
+      },
       "Properties": {
         "PolicyDocument": {
           "Statement": [
@@ -156,9 +401,25 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
               },
             },
             {
+              "Action": [
+                "kms:Decrypt",
+                "kms:Encrypt",
+                "kms:ReEncrypt*",
+                "kms:GenerateDataKey*",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "ArtifactKey8D84C5F0",
+                  "Arn",
+                ],
+              },
+            },
+            {
               "Action": "sts:AssumeRole",
               "Effect": "Allow",
               "Resource": "arn:aws:iam::123456789012:role/cdk-*",
+              "Sid": "CdkRoleAssumption",
             },
             {
               "Action": [
@@ -175,6 +436,7 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
                 "arn:aws:cloudformation:*:123456789012:stack/RedirectStack/*",
                 "arn:aws:cloudformation:*:123456789012:stack/CDKToolkit/*",
               ],
+              "Sid": "CloudFormationStackManagement",
             },
             {
               "Action": [
@@ -188,22 +450,32 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
                 "arn:aws:s3:::cdk-*-assets-123456789012-*",
                 "arn:aws:s3:::cdk-*-assets-123456789012-*/*",
               ],
+              "Sid": "CdkAssetsBucketAccess",
             },
             {
               "Action": "ssm:GetParameter",
               "Effect": "Allow",
               "Resource": "arn:aws:ssm:*:123456789012:parameter/cdk-bootstrap/*",
+              "Sid": "CdkBootstrapParameters",
             },
             {
               "Action": [
                 "route53:ListHostedZones",
                 "route53:ListHostedZonesByName",
                 "route53:GetHostedZone",
+              ],
+              "Effect": "Allow",
+              "Resource": "*",
+              "Sid": "Route53ListOperations",
+            },
+            {
+              "Action": [
                 "route53:ChangeResourceRecordSets",
                 "route53:ListResourceRecordSets",
               ],
               "Effect": "Allow",
-              "Resource": "*",
+              "Resource": "arn:aws:route53:::hostedzone/*",
+              "Sid": "Route53RecordManagement",
             },
             {
               "Action": [
@@ -212,9 +484,17 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
                 "acm:DeleteCertificate",
                 "acm:ListCertificates",
                 "acm:AddTagsToCertificate",
+                "acm:ListTagsForCertificate",
               ],
               "Effect": "Allow",
+              "Resource": "arn:aws:acm:us-east-1:123456789012:certificate/*",
+              "Sid": "AcmCertificateManagement",
+            },
+            {
+              "Action": "acm:ListCertificates",
+              "Effect": "Allow",
               "Resource": "*",
+              "Sid": "AcmListCertificates",
             },
             {
               "Action": [
@@ -222,17 +502,42 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
                 "cloudfront:UpdateDistribution",
                 "cloudfront:DeleteDistribution",
                 "cloudfront:GetDistribution",
+                "cloudfront:GetDistributionConfig",
                 "cloudfront:TagResource",
+                "cloudfront:UntagResource",
+                "cloudfront:ListTagsForResource",
+              ],
+              "Effect": "Allow",
+              "Resource": "arn:aws:cloudfront::123456789012:distribution/*",
+              "Sid": "CloudFrontDistributionManagement",
+            },
+            {
+              "Action": [
                 "cloudfront:CreateFunction",
                 "cloudfront:UpdateFunction",
                 "cloudfront:DeleteFunction",
                 "cloudfront:DescribeFunction",
                 "cloudfront:PublishFunction",
                 "cloudfront:GetFunction",
+              ],
+              "Effect": "Allow",
+              "Resource": "arn:aws:cloudfront::123456789012:function/*",
+              "Sid": "CloudFrontFunctionManagement",
+            },
+            {
+              "Action": [
+                "cloudfront:ListDistributions",
                 "cloudfront:ListFunctions",
               ],
               "Effect": "Allow",
               "Resource": "*",
+              "Sid": "CloudFrontListOperations",
+            },
+            {
+              "Action": "codestar-connections:UseConnection",
+              "Effect": "Allow",
+              "Resource": "arn:aws:codestar-connections:us-east-1:123456789012:connection/test-connection-id",
+              "Sid": "CodeStarConnectionAccess",
             },
             {
               "Action": [
@@ -244,7 +549,7 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
               "Resource": [
                 {
                   "Fn::GetAtt": [
-                    "PipelineArtifactsBucket22248F97",
+                    "ArtifactBucket7410C9EF",
                     "Arn",
                   ],
                 },
@@ -254,7 +559,7 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
                     [
                       {
                         "Fn::GetAtt": [
-                          "PipelineArtifactsBucket22248F97",
+                          "ArtifactBucket7410C9EF",
                           "Arn",
                         ],
                       },
@@ -272,22 +577,7 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
               "Effect": "Allow",
               "Resource": {
                 "Fn::GetAtt": [
-                  "PipelineArtifactsBucketEncryptionKey01D58D69",
-                  "Arn",
-                ],
-              },
-            },
-            {
-              "Action": [
-                "kms:Decrypt",
-                "kms:Encrypt",
-                "kms:ReEncrypt*",
-                "kms:GenerateDataKey*",
-              ],
-              "Effect": "Allow",
-              "Resource": {
-                "Fn::GetAtt": [
-                  "PipelineArtifactsBucketEncryptionKey01D58D69",
+                  "ArtifactKey8D84C5F0",
                   "Arn",
                 ],
               },
@@ -304,147 +594,27 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
       },
       "Type": "AWS::IAM::Policy",
     },
-    "PipelineArtifactsBucket22248F97": {
-      "DeletionPolicy": "Retain",
-      "Properties": {
-        "BucketEncryption": {
-          "ServerSideEncryptionConfiguration": [
-            {
-              "ServerSideEncryptionByDefault": {
-                "KMSMasterKeyID": {
-                  "Fn::GetAtt": [
-                    "PipelineArtifactsBucketEncryptionKey01D58D69",
-                    "Arn",
-                  ],
-                },
-                "SSEAlgorithm": "aws:kms",
-              },
-            },
-          ],
-        },
-        "PublicAccessBlockConfiguration": {
-          "BlockPublicAcls": true,
-          "BlockPublicPolicy": true,
-          "IgnorePublicAcls": true,
-          "RestrictPublicBuckets": true,
-        },
-        "Tags": [
-          {
-            "Key": "ManagedBy",
-            "Value": "cdk",
-          },
-          {
-            "Key": "Project",
-            "Value": "domain-redirector",
-          },
-        ],
-      },
-      "Type": "AWS::S3::Bucket",
-      "UpdateReplacePolicy": "Retain",
-    },
-    "PipelineArtifactsBucketEncryptionKey01D58D69": {
-      "DeletionPolicy": "Delete",
-      "Properties": {
-        "KeyPolicy": {
-          "Statement": [
-            {
-              "Action": "kms:*",
-              "Effect": "Allow",
-              "Principal": {
-                "AWS": {
-                  "Fn::Join": [
-                    "",
-                    [
-                      "arn:",
-                      {
-                        "Ref": "AWS::Partition",
-                      },
-                      ":iam::123456789012:root",
-                    ],
-                  ],
-                },
-              },
-              "Resource": "*",
-            },
-          ],
-          "Version": "2012-10-17",
-        },
-        "Tags": [
-          {
-            "Key": "ManagedBy",
-            "Value": "cdk",
-          },
-          {
-            "Key": "Project",
-            "Value": "domain-redirector",
-          },
-        ],
-      },
-      "Type": "AWS::KMS::Key",
-      "UpdateReplacePolicy": "Delete",
-    },
-    "PipelineArtifactsBucketEncryptionKeyAlias5C510EEE": {
-      "DeletionPolicy": "Delete",
-      "Properties": {
-        "AliasName": "alias/codepipeline-snapshotpipelinestackpipelinebbb90ec0",
-        "TargetKeyId": {
-          "Fn::GetAtt": [
-            "PipelineArtifactsBucketEncryptionKey01D58D69",
-            "Arn",
-          ],
-        },
-      },
-      "Type": "AWS::KMS::Alias",
-      "UpdateReplacePolicy": "Delete",
-    },
-    "PipelineArtifactsBucketPolicyD4F9712A": {
-      "Properties": {
-        "Bucket": {
-          "Ref": "PipelineArtifactsBucket22248F97",
-        },
-        "PolicyDocument": {
-          "Statement": [
-            {
-              "Action": "s3:*",
-              "Condition": {
-                "Bool": {
-                  "aws:SecureTransport": "false",
-                },
-              },
-              "Effect": "Deny",
-              "Principal": {
-                "AWS": "*",
-              },
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "PipelineArtifactsBucket22248F97",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Fn::Join": [
-                    "",
-                    [
-                      {
-                        "Fn::GetAtt": [
-                          "PipelineArtifactsBucket22248F97",
-                          "Arn",
-                        ],
-                      },
-                      "/*",
-                    ],
-                  ],
-                },
-              ],
-            },
-          ],
-          "Version": "2012-10-17",
-        },
-      },
-      "Type": "AWS::S3::BucketPolicy",
-    },
     "PipelineBuildAndDeployCodePipelineActionRoleDefaultPolicyBFAD9166": {
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "applies_to": [
+                "Action::s3:GetObject*",
+                "Action::s3:GetBucket*",
+                "Action::s3:List*",
+                "Action::s3:DeleteObject*",
+                "Action::s3:Abort*",
+                "Action::kms:ReEncrypt*",
+                "Action::kms:GenerateDataKey*",
+                "Resource::<ArtifactBucket.Arn>/*",
+              ],
+              "id": "AwsSolutions-IAM5",
+              "reason": "Pipeline role requires S3 wildcards for artifact operations. Actions like s3:GetObject*, s3:List*, s3:DeleteObject* are standard CDK-generated permissions scoped to the artifact bucket.",
+            },
+          ],
+        },
+      },
       "Properties": {
         "PolicyDocument": {
           "Statement": [
@@ -475,6 +645,26 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
       "Type": "AWS::IAM::Policy",
     },
     "PipelineBuildAndDeployCodePipelineActionRoleF42A7164": {
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "applies_to": [
+                "Action::s3:GetObject*",
+                "Action::s3:GetBucket*",
+                "Action::s3:List*",
+                "Action::s3:DeleteObject*",
+                "Action::s3:Abort*",
+                "Action::kms:ReEncrypt*",
+                "Action::kms:GenerateDataKey*",
+                "Resource::<ArtifactBucket.Arn>/*",
+              ],
+              "id": "AwsSolutions-IAM5",
+              "reason": "Pipeline role requires S3 wildcards for artifact operations. Actions like s3:GetObject*, s3:List*, s3:DeleteObject* are standard CDK-generated permissions scoped to the artifact bucket.",
+            },
+          ],
+        },
+      },
       "Properties": {
         "AssumeRolePolicyDocument": {
           "Statement": [
@@ -511,19 +701,39 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
         "PipelineRoleDefaultPolicyC7A05455",
         "PipelineRoleD68726F7",
       ],
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "applies_to": [
+                "Action::s3:GetObject*",
+                "Action::s3:GetBucket*",
+                "Action::s3:List*",
+                "Action::s3:DeleteObject*",
+                "Action::s3:Abort*",
+                "Action::kms:ReEncrypt*",
+                "Action::kms:GenerateDataKey*",
+                "Resource::<ArtifactBucket.Arn>/*",
+              ],
+              "id": "AwsSolutions-IAM5",
+              "reason": "Pipeline role requires S3 wildcards for artifact operations. Actions like s3:GetObject*, s3:List*, s3:DeleteObject* are standard CDK-generated permissions scoped to the artifact bucket.",
+            },
+          ],
+        },
+      },
       "Properties": {
         "ArtifactStore": {
           "EncryptionKey": {
             "Id": {
               "Fn::GetAtt": [
-                "PipelineArtifactsBucketEncryptionKey01D58D69",
+                "ArtifactKey8D84C5F0",
                 "Arn",
               ],
             },
             "Type": "KMS",
           },
           "Location": {
-            "Ref": "PipelineArtifactsBucket22248F97",
+            "Ref": "ArtifactBucket7410C9EF",
           },
           "Type": "S3",
         },
@@ -615,6 +825,26 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
       "Type": "AWS::CodePipeline::Pipeline",
     },
     "PipelineRoleD68726F7": {
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "applies_to": [
+                "Action::s3:GetObject*",
+                "Action::s3:GetBucket*",
+                "Action::s3:List*",
+                "Action::s3:DeleteObject*",
+                "Action::s3:Abort*",
+                "Action::kms:ReEncrypt*",
+                "Action::kms:GenerateDataKey*",
+                "Resource::<ArtifactBucket.Arn>/*",
+              ],
+              "id": "AwsSolutions-IAM5",
+              "reason": "Pipeline role requires S3 wildcards for artifact operations. Actions like s3:GetObject*, s3:List*, s3:DeleteObject* are standard CDK-generated permissions scoped to the artifact bucket.",
+            },
+          ],
+        },
+      },
       "Properties": {
         "AssumeRolePolicyDocument": {
           "Statement": [
@@ -642,6 +872,26 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
       "Type": "AWS::IAM::Role",
     },
     "PipelineRoleDefaultPolicyC7A05455": {
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "applies_to": [
+                "Action::s3:GetObject*",
+                "Action::s3:GetBucket*",
+                "Action::s3:List*",
+                "Action::s3:DeleteObject*",
+                "Action::s3:Abort*",
+                "Action::kms:ReEncrypt*",
+                "Action::kms:GenerateDataKey*",
+                "Resource::<ArtifactBucket.Arn>/*",
+              ],
+              "id": "AwsSolutions-IAM5",
+              "reason": "Pipeline role requires S3 wildcards for artifact operations. Actions like s3:GetObject*, s3:List*, s3:DeleteObject* are standard CDK-generated permissions scoped to the artifact bucket.",
+            },
+          ],
+        },
+      },
       "Properties": {
         "PolicyDocument": {
           "Statement": [
@@ -662,7 +912,7 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
               "Resource": [
                 {
                   "Fn::GetAtt": [
-                    "PipelineArtifactsBucket22248F97",
+                    "ArtifactBucket7410C9EF",
                     "Arn",
                   ],
                 },
@@ -672,7 +922,7 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
                     [
                       {
                         "Fn::GetAtt": [
-                          "PipelineArtifactsBucket22248F97",
+                          "ArtifactBucket7410C9EF",
                           "Arn",
                         ],
                       },
@@ -693,7 +943,7 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
               "Effect": "Allow",
               "Resource": {
                 "Fn::GetAtt": [
-                  "PipelineArtifactsBucketEncryptionKey01D58D69",
+                  "ArtifactKey8D84C5F0",
                   "Arn",
                 ],
               },
@@ -731,6 +981,26 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
       "Type": "AWS::IAM::Policy",
     },
     "PipelineSourceGitHubCodePipelineActionRole1AB4BA0C": {
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "applies_to": [
+                "Action::s3:GetObject*",
+                "Action::s3:GetBucket*",
+                "Action::s3:List*",
+                "Action::s3:DeleteObject*",
+                "Action::s3:Abort*",
+                "Action::kms:ReEncrypt*",
+                "Action::kms:GenerateDataKey*",
+                "Resource::<ArtifactBucket.Arn>/*",
+              ],
+              "id": "AwsSolutions-IAM5",
+              "reason": "Pipeline role requires S3 wildcards for artifact operations. Actions like s3:GetObject*, s3:List*, s3:DeleteObject* are standard CDK-generated permissions scoped to the artifact bucket.",
+            },
+          ],
+        },
+      },
       "Properties": {
         "AssumeRolePolicyDocument": {
           "Statement": [
@@ -763,6 +1033,26 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
       "Type": "AWS::IAM::Role",
     },
     "PipelineSourceGitHubCodePipelineActionRoleDefaultPolicy3EDC09EF": {
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "applies_to": [
+                "Action::s3:GetObject*",
+                "Action::s3:GetBucket*",
+                "Action::s3:List*",
+                "Action::s3:DeleteObject*",
+                "Action::s3:Abort*",
+                "Action::kms:ReEncrypt*",
+                "Action::kms:GenerateDataKey*",
+                "Resource::<ArtifactBucket.Arn>/*",
+              ],
+              "id": "AwsSolutions-IAM5",
+              "reason": "Pipeline role requires S3 wildcards for artifact operations. Actions like s3:GetObject*, s3:List*, s3:DeleteObject* are standard CDK-generated permissions scoped to the artifact bucket.",
+            },
+          ],
+        },
+      },
       "Properties": {
         "PolicyDocument": {
           "Statement": [
@@ -788,7 +1078,7 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
               "Resource": [
                 {
                   "Fn::GetAtt": [
-                    "PipelineArtifactsBucket22248F97",
+                    "ArtifactBucket7410C9EF",
                     "Arn",
                   ],
                 },
@@ -798,7 +1088,7 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
                     [
                       {
                         "Fn::GetAtt": [
-                          "PipelineArtifactsBucket22248F97",
+                          "ArtifactBucket7410C9EF",
                           "Arn",
                         ],
                       },
@@ -819,7 +1109,7 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
               "Effect": "Allow",
               "Resource": {
                 "Fn::GetAtt": [
-                  "PipelineArtifactsBucketEncryptionKey01D58D69",
+                  "ArtifactKey8D84C5F0",
                   "Arn",
                 ],
               },
@@ -836,7 +1126,7 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
                   [
                     {
                       "Fn::GetAtt": [
-                        "PipelineArtifactsBucket22248F97",
+                        "ArtifactBucket7410C9EF",
                         "Arn",
                       ],
                     },

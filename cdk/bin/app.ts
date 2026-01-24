@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
+import { Aspects } from 'aws-cdk-lib';
+import { AwsSolutionsChecks } from 'cdk-nag';
 import { RedirectStack } from '../lib/redirect-stack';
 import { PipelineStack } from '../lib/pipeline-stack';
 
@@ -35,5 +37,8 @@ if (connectionArn && githubOwner && githubRepo) {
     description: 'CI/CD pipeline for domain redirector service',
   });
 }
+
+// Apply cdk-nag security checks (AWS Solutions rule pack)
+Aspects.of(app).add(new AwsSolutionsChecks({ verbose: true }));
 
 app.synth();

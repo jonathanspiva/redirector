@@ -1,0 +1,32 @@
+version: 2
+updates:
+  # NPM dependencies for CDK infrastructure
+  - package-ecosystem: "npm"
+    directory: "/cdk"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "security"
+    commit-message:
+      prefix: "deps"
+    groups:
+      # Group AWS CDK updates together
+      aws-cdk:
+        patterns:
+          - "aws-cdk*"
+          - "@aws-cdk/*"
+      # Group testing dependencies
+      testing:
+        patterns:
+          - "jest*"
+          - "@types/jest"
+          - "ts-jest"
+      # Group TypeScript tooling
+      typescript:
+        patterns:
+          - "typescript"
+          - "ts-node"
+          - "@types/node"

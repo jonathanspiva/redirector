@@ -136,14 +136,13 @@ describe('PipelineStack', () => {
       });
     });
 
-    it('should grant Route 53 permissions', () => {
+    it('should grant Route 53 list permissions', () => {
       template.hasResourceProperties('AWS::IAM::Policy', {
         PolicyDocument: {
           Statement: Match.arrayWith([
             Match.objectLike({
               Action: Match.arrayWith([
                 'route53:ListHostedZones',
-                'route53:ChangeResourceRecordSets',
               ]),
               Effect: 'Allow',
             }),
@@ -152,7 +151,23 @@ describe('PipelineStack', () => {
       });
     });
 
-    it('should grant ACM permissions', () => {
+    it('should grant Route 53 record management permissions', () => {
+      template.hasResourceProperties('AWS::IAM::Policy', {
+        PolicyDocument: {
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Action: Match.arrayWith([
+                'route53:ChangeResourceRecordSets',
+              ]),
+              Effect: 'Allow',
+              Resource: 'arn:aws:route53:::hostedzone/*',
+            }),
+          ]),
+        },
+      });
+    });
+
+    it('should grant ACM permissions scoped to us-east-1', () => {
       template.hasResourceProperties('AWS::IAM::Policy', {
         PolicyDocument: {
           Statement: Match.arrayWith([
@@ -162,22 +177,94 @@ describe('PipelineStack', () => {
                 'acm:DescribeCertificate',
               ]),
               Effect: 'Allow',
+              Resource: Match.stringLikeRegexp('arn:aws:acm:us-east-1:.*:certificate/\\*'),
             }),
           ]),
         },
       });
     });
 
-    it('should grant CloudFront permissions', () => {
+    it('should grant CloudFront distribution permissions scoped to account', () => {
       template.hasResourceProperties('AWS::IAM::Policy', {
         PolicyDocument: {
           Statement: Match.arrayWith([
             Match.objectLike({
               Action: Match.arrayWith([
                 'cloudfront:CreateDistribution',
+              ]),
+              Effect: 'Allow',
+              Resource: Match.stringLikeRegexp('arn:aws:cloudfront::.*:distribution/\\*'),
+            }),
+          ]),
+        },
+      });
+    });
+
+    it('should grant CloudFront function permissions scoped to account', () => {
+      template.hasResourceProperties('AWS::IAM::Policy', {
+        PolicyDocument: {
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Action: Match.arrayWith([
                 'cloudfront:CreateFunction',
               ]),
               Effect: 'Allow',
+              Resource: Match.stringLikeRegexp('arn:aws:cloudfront::.*:function/\\*'),
+            }),
+          ]),
+        },
+      });
+    });
+
+    it('should scope CodeStar connection to specific ARN', () => {
+      template.hasResourceProperties('AWS::IAM::Policy', {
+        PolicyDocument: {
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Action: 'codestar-connections:UseConnection',
+              Effect: 'Allow',
+              Resource: 'arn:aws:codestar-connections:us-east-1:123456789012:connection/test-connection',
+            }),
+          ]),
+        },
+      });
+    });
+  });
+
+  describe('Security', () => {
+    it('should create KMS key with rotation enabled', () => {
+      template.hasResourceProperties('AWS::KMS::Key', {
+        EnableKeyRotation: true,
+      });
+    });
+
+    it('should create S3 bucket with public access blocked', () => {
+      template.hasResourceProperties('AWS::S3::Bucket', {
+        PublicAccessBlockConfiguration: {
+          BlockPublicAcls: true,
+          BlockPublicPolicy: true,
+          IgnorePublicAcls: true,
+          RestrictPublicBuckets: true,
+        },
+      });
+    });
+
+    it('should create S3 bucket with versioning enabled', () => {
+      template.hasResourceProperties('AWS::S3::Bucket', {
+        VersioningConfiguration: {
+          Status: 'Enabled',
+        },
+      });
+    });
+
+    it('should create S3 bucket with KMS encryption', () => {
+      template.hasResourceProperties('AWS::S3::Bucket', {
+        BucketEncryption: {
+          ServerSideEncryptionConfiguration: Match.arrayWith([
+            Match.objectLike({
+              ServerSideEncryptionByDefault: {
+                SSEAlgorithm: 'aws:kms',
+              },
             }),
           ]),
         },

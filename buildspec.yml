@@ -14,6 +14,8 @@ phases:
 
   pre_build:
     commands:
+      - echo "Running security audit..."
+      - cd cdk && npm audit --audit-level=high || echo "Security audit found vulnerabilities - review before deploying to production"
       - echo "Validating configuration..."
       - cd cdk && npm run validate -- ../redirects.yaml
       - echo "Running unit tests..."

@@ -3,6 +3,9 @@ import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
 import * as codepipeline_actions from 'aws-cdk-lib/aws-codepipeline-actions';
 import * as codebuild from 'aws-cdk-lib/aws-codebuild';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as kms from 'aws-cdk-lib/aws-kms';
+import { NagSuppressions } from 'cdk-nag';
 import { Construct } from 'constructs';
 
 export interface PipelineStackProps extends cdk.StackProps {
@@ -25,6 +28,11 @@ export interface PipelineStackProps extends cdk.StackProps {
  * Deploys automatically when changes are pushed to the main branch:
  * 1. Source: Pull from GitHub via CodeStar connection
  * 2. Build: Validate config, deploy CDK stack, run smoke tests
+ *
+ * Security features:
+ * - S3 artifact bucket with encryption, versioning, and public access blocked
+ * - IAM policies scoped to specific resources where possible
+ * - cdk-nag compliance with documented suppressions
  */
 export class PipelineStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: PipelineStackProps) {
@@ -35,6 +43,28 @@ export class PipelineStack extends cdk.Stack {
     // Apply default tags
     cdk.Tags.of(this).add('Project', 'domain-redirector');
     cdk.Tags.of(this).add('ManagedBy', 'cdk');
+
+    // Create KMS key for artifact encryption with auto-rotation
+    const artifactKey = new kms.Key(this, 'ArtifactKey', {
+      description: 'KMS key for pipeline artifact encryption',
+      enableKeyRotation: true, // CIS/Well-Architected requirement
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // Create secure artifact bucket (AWS Well-Architected & CIS compliant)
+    const artifactBucket = new s3.Bucket(this, 'ArtifactBucket', {
+      encryption: s3.BucketEncryption.KMS,
+      encryptionKey: artifactKey,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      versioned: true,
+      enforceSSL: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      // Lifecycle rules for cost optimization
+      lifecycleRules: [{
+        expiration: cdk.Duration.days(90),
+        noncurrentVersionExpiration: cdk.Duration.days(30),
+      }],
+    });
 
     // Source artifact
     const sourceOutput = new codepipeline.Artifact('SourceOutput');
@@ -57,13 +87,15 @@ export class PipelineStack extends cdk.Stack {
       environment: {
         buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
         computeType: codebuild.ComputeType.SMALL,
+        privileged: false, // Explicitly disable privileged mode
       },
       buildSpec: codebuild.BuildSpec.fromSourceFilename('buildspec.yml'),
       timeout: cdk.Duration.minutes(30),
+      encryptionKey: artifactKey, // Use same KMS key for build artifacts
     });
 
     // Grant CodeBuild permissions for CDK deployment
-    this.grantCdkDeployPermissions(buildProject);
+    this.grantCdkDeployPermissions(buildProject, props.connectionArn);
 
     // Build action
     const buildAction = new codepipeline_actions.CodeBuildAction({
@@ -82,9 +114,10 @@ export class PipelineStack extends cdk.Stack {
       },
     });
 
-    // Create the pipeline
-    new codepipeline.Pipeline(this, 'Pipeline', {
+    // Create the pipeline with secure artifact bucket
+    const pipeline = new codepipeline.Pipeline(this, 'Pipeline', {
       pipelineName: 'domain-redirector',
+      artifactBucket,
       restartExecutionOnUpdate: true,
       stages: [
         {
@@ -98,6 +131,9 @@ export class PipelineStack extends cdk.Stack {
       ],
     });
 
+    // Add cdk-nag suppressions for CDK-generated resources that require wildcards
+    this.addNagSuppressions(buildProject, pipeline, artifactBucket);
+
     // Output the pipeline ARN
     new cdk.CfnOutput(this, 'PipelineArn', {
       value: `arn:aws:codepipeline:${this.region}:${this.account}:domain-redirector`,
@@ -108,21 +144,24 @@ export class PipelineStack extends cdk.Stack {
   /**
    * Grant the CodeBuild project permissions needed for CDK deployment.
    *
-   * CDK needs broad permissions to create/update/delete resources.
-   * In production, you may want to scope this down further.
+   * Permissions are scoped to specific resource patterns following
+   * AWS Well-Architected and CIS benchmark least-privilege requirements.
    */
-  private grantCdkDeployPermissions(project: codebuild.PipelineProject): void {
-    // CDK needs to assume the CDK roles
+  private grantCdkDeployPermissions(
+    project: codebuild.PipelineProject,
+    connectionArn: string
+  ): void {
+    // CDK needs to assume the CDK bootstrap roles
     project.addToRolePolicy(new iam.PolicyStatement({
+      sid: 'CdkRoleAssumption',
       effect: iam.Effect.ALLOW,
       actions: ['sts:AssumeRole'],
-      resources: [
-        `arn:aws:iam::${this.account}:role/cdk-*`,
-      ],
+      resources: [`arn:aws:iam::${this.account}:role/cdk-*`],
     }));
 
-    // CloudFormation permissions
+    // CloudFormation permissions - scoped to specific stacks
     project.addToRolePolicy(new iam.PolicyStatement({
+      sid: 'CloudFormationStackManagement',
       effect: iam.Effect.ALLOW,
       actions: [
         'cloudformation:DescribeStacks',
@@ -139,8 +178,9 @@ export class PipelineStack extends cdk.Stack {
       ],
     }));
 
-    // S3 permissions for CDK assets
+    // S3 permissions for CDK assets bucket
     project.addToRolePolicy(new iam.PolicyStatement({
+      sid: 'CdkAssetsBucketAccess',
       effect: iam.Effect.ALLOW,
       actions: [
         's3:GetObject',
@@ -156,30 +196,38 @@ export class PipelineStack extends cdk.Stack {
 
     // SSM permissions for CDK context lookups
     project.addToRolePolicy(new iam.PolicyStatement({
+      sid: 'CdkBootstrapParameters',
       effect: iam.Effect.ALLOW,
-      actions: [
-        'ssm:GetParameter',
-      ],
-      resources: [
-        `arn:aws:ssm:*:${this.account}:parameter/cdk-bootstrap/*`,
-      ],
+      actions: ['ssm:GetParameter'],
+      resources: [`arn:aws:ssm:*:${this.account}:parameter/cdk-bootstrap/*`],
     }));
 
-    // Route 53 permissions for hosted zone lookups and record management
+    // Route 53 - List operations require wildcard (AWS API limitation)
     project.addToRolePolicy(new iam.PolicyStatement({
+      sid: 'Route53ListOperations',
       effect: iam.Effect.ALLOW,
       actions: [
         'route53:ListHostedZones',
         'route53:ListHostedZonesByName',
         'route53:GetHostedZone',
+      ],
+      resources: ['*'], // Required by AWS API
+    }));
+
+    // Route 53 - Mutation operations scoped to hosted zones
+    project.addToRolePolicy(new iam.PolicyStatement({
+      sid: 'Route53RecordManagement',
+      effect: iam.Effect.ALLOW,
+      actions: [
         'route53:ChangeResourceRecordSets',
         'route53:ListResourceRecordSets',
       ],
-      resources: ['*'],
+      resources: ['arn:aws:route53:::hostedzone/*'],
     }));
 
-    // ACM permissions for certificate management
+    // ACM permissions - scoped to us-east-1 (CloudFront requirement)
     project.addToRolePolicy(new iam.PolicyStatement({
+      sid: 'AcmCertificateManagement',
       effect: iam.Effect.ALLOW,
       actions: [
         'acm:RequestCertificate',
@@ -187,28 +235,146 @@ export class PipelineStack extends cdk.Stack {
         'acm:DeleteCertificate',
         'acm:ListCertificates',
         'acm:AddTagsToCertificate',
+        'acm:ListTagsForCertificate',
       ],
-      resources: ['*'],
+      resources: [`arn:aws:acm:us-east-1:${this.account}:certificate/*`],
     }));
 
-    // CloudFront permissions
+    // ACM ListCertificates requires wildcard
     project.addToRolePolicy(new iam.PolicyStatement({
+      sid: 'AcmListCertificates',
+      effect: iam.Effect.ALLOW,
+      actions: ['acm:ListCertificates'],
+      resources: ['*'], // Required by AWS API
+    }));
+
+    // CloudFront distribution operations - scoped to account
+    project.addToRolePolicy(new iam.PolicyStatement({
+      sid: 'CloudFrontDistributionManagement',
       effect: iam.Effect.ALLOW,
       actions: [
         'cloudfront:CreateDistribution',
         'cloudfront:UpdateDistribution',
         'cloudfront:DeleteDistribution',
         'cloudfront:GetDistribution',
+        'cloudfront:GetDistributionConfig',
         'cloudfront:TagResource',
+        'cloudfront:UntagResource',
+        'cloudfront:ListTagsForResource',
+      ],
+      resources: [`arn:aws:cloudfront::${this.account}:distribution/*`],
+    }));
+
+    // CloudFront function operations - scoped to account
+    project.addToRolePolicy(new iam.PolicyStatement({
+      sid: 'CloudFrontFunctionManagement',
+      effect: iam.Effect.ALLOW,
+      actions: [
         'cloudfront:CreateFunction',
         'cloudfront:UpdateFunction',
         'cloudfront:DeleteFunction',
         'cloudfront:DescribeFunction',
         'cloudfront:PublishFunction',
         'cloudfront:GetFunction',
+      ],
+      resources: [`arn:aws:cloudfront::${this.account}:function/*`],
+    }));
+
+    // CloudFront list operations require wildcard
+    project.addToRolePolicy(new iam.PolicyStatement({
+      sid: 'CloudFrontListOperations',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'cloudfront:ListDistributions',
         'cloudfront:ListFunctions',
       ],
-      resources: ['*'],
+      resources: ['*'], // Required by AWS API
     }));
+
+    // CodeStar connection - scoped to specific connection
+    project.addToRolePolicy(new iam.PolicyStatement({
+      sid: 'CodeStarConnectionAccess',
+      effect: iam.Effect.ALLOW,
+      actions: ['codestar-connections:UseConnection'],
+      resources: [connectionArn],
+    }));
+  }
+
+  /**
+   * Add cdk-nag suppressions for acceptable security findings.
+   *
+   * Each suppression includes documented justification following
+   * AWS Well-Architected review practices.
+   */
+  private addNagSuppressions(
+    buildProject: codebuild.PipelineProject,
+    pipeline: codepipeline.Pipeline,
+    artifactBucket: s3.Bucket
+  ): void {
+    // Suppress S3 access logging - artifact bucket is internal and encrypted
+    NagSuppressions.addResourceSuppressions(
+      artifactBucket,
+      [{
+        id: 'AwsSolutions-S1',
+        reason: 'Artifact bucket is internal CI/CD infrastructure with encryption enabled. Access logging not required for build artifacts.',
+      }],
+    );
+
+    // Suppress wildcard IAM permissions that are required by AWS APIs
+    NagSuppressions.addResourceSuppressions(
+      buildProject,
+      [{
+        id: 'AwsSolutions-IAM5',
+        reason: 'CDK deployment requires wildcards for: (1) route53:List* requires wildcard per AWS API, (2) cdk-* role pattern for CDK bootstrap roles, (3) cloudformation stack paths with wildcard for stack versions, (4) cdk assets bucket pattern, (5) ssm parameters for CDK bootstrap',
+        appliesTo: [
+          'Resource::*',
+          'Resource::arn:aws:iam::<AWS::AccountId>:role/cdk-*',
+          'Resource::arn:aws:cloudformation:*:<AWS::AccountId>:stack/RedirectStack/*',
+          'Resource::arn:aws:cloudformation:*:<AWS::AccountId>:stack/CDKToolkit/*',
+          'Resource::arn:aws:s3:::cdk-*-assets-<AWS::AccountId>-*',
+          'Resource::arn:aws:s3:::cdk-*-assets-<AWS::AccountId>-*/*',
+          'Resource::arn:aws:ssm:*:<AWS::AccountId>:parameter/cdk-bootstrap/*',
+          'Resource::arn:aws:route53:::hostedzone/*',
+          'Resource::arn:aws:acm:us-east-1:<AWS::AccountId>:certificate/*',
+          'Resource::arn:aws:cloudfront::<AWS::AccountId>:distribution/*',
+          'Resource::arn:aws:cloudfront::<AWS::AccountId>:function/*',
+        ],
+      }],
+      true, // Apply to children (role policies)
+    );
+
+    // Suppress CodeBuild wildcards for logs and reports (CDK auto-generated)
+    NagSuppressions.addResourceSuppressions(
+      buildProject,
+      [{
+        id: 'AwsSolutions-IAM5',
+        reason: 'CodeBuild requires wildcard permissions for CloudWatch Logs and CodeBuild reports. These are auto-generated by CDK and scoped to the specific project.',
+        appliesTo: [
+          'Resource::arn:<AWS::Partition>:logs:<AWS::Region>:<AWS::AccountId>:log-group:/aws/codebuild/<BuildProjectName>:*',
+          'Resource::arn:<AWS::Partition>:codebuild:<AWS::Region>:<AWS::AccountId>:report-group/<BuildProjectName>-*',
+        ],
+      }],
+      true,
+    );
+
+    // Suppress pipeline role wildcards (CDK auto-generated for S3 operations)
+    NagSuppressions.addResourceSuppressions(
+      pipeline,
+      [{
+        id: 'AwsSolutions-IAM5',
+        reason: 'Pipeline role requires S3 wildcards for artifact operations. Actions like s3:GetObject*, s3:List*, s3:DeleteObject* are standard CDK-generated permissions scoped to the artifact bucket.',
+        appliesTo: [
+          'Action::s3:GetObject*',
+          'Action::s3:GetBucket*',
+          'Action::s3:List*',
+          'Action::s3:DeleteObject*',
+          'Action::s3:Abort*',
+          'Action::kms:ReEncrypt*',
+          'Action::kms:GenerateDataKey*',
+          'Resource::<ArtifactBucket.Arn>/*',
+        ],
+      }],
+      true,
+    );
   }
 }
