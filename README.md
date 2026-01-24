@@ -8,7 +8,7 @@ This service reads from a YAML configuration file and automatically provisions *
 
 - **CloudFront Distribution** — Dedicated distribution for each source domain
 - **ACM Certificate** — Single-domain certificate (no complex multi-domain management)
-- **CloudFront Function** — Shared edge function that performs redirects
+- **CloudFront Function** — One function per destination target (all domains redirecting to the same target share a function)
 - **Route 53 Records** — A/AAAA records pointing each domain to its distribution
 
 Changes to the configuration file trigger automatic deployment via AWS CodePipeline and CodeBuild.
@@ -28,27 +28,29 @@ Changes to the configuration file trigger automatic deployment via AWS CodePipel
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                                 AWS                                      │
 │                                                                          │
-│  For each domain in redirects.yaml:                                     │
+│  CloudFront Functions (one per destination):                            │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │  redirect-to-brand-a     →  redirects to https://www.brand-a.com │   │
+│  │  redirect-to-brand-b     →  redirects to https://www.brand-b.com │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│  Per-domain resources:                                                   │
 │  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │  old-brand.com                                                      │ │
+│  │  old-brand.com  →  brand-a                                          │ │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │ │
 │  │  │  CloudFront  │  │     ACM      │  │   Route 53   │              │ │
 │  │  │ Distribution │──│ Certificate  │  │   A/AAAA     │              │ │
 │  │  └──────┬───────┘  └──────────────┘  └──────────────┘              │ │
 │  │         │                                                           │ │
-│  │         ▼                                                           │ │
-│  │  ┌──────────────┐                                                   │ │
-│  │  │  CloudFront  │ ◄─── Shared across all distributions              │ │
-│  │  │   Function   │      (returns redirect response)                  │ │
-│  │  └──────────────┘                                                   │ │
+│  │         └──────────▶  redirect-to-brand-a function                  │ │
 │  └────────────────────────────────────────────────────────────────────┘ │
 │                                                                          │
 │  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │  legacy-site.net  (same pattern...)                                 │ │
+│  │  legacy-site.net  →  brand-a  (uses same function)                  │ │
 │  └────────────────────────────────────────────────────────────────────┘ │
 │                                                                          │
 │  ┌────────────────────────────────────────────────────────────────────┐ │
-│  │  enterprise-old.com  (same pattern...)                              │ │
+│  │  enterprise-old.com  →  brand-b  (uses redirect-to-brand-b)         │ │
 │  └────────────────────────────────────────────────────────────────────┘ │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -71,28 +73,32 @@ Benefits:
 
 ### How the Redirect Works
 
-A single CloudFront Function is shared across all distributions. It uses KeyValueStore to look up where each domain should redirect:
+Each unique destination target gets its own CloudFront Function. The function is simple—it only needs to know its target URL and redirect type:
 
 ```javascript
-import cf from 'cloudfront';
-const kv = cf.kvs();
+// Auto-generated: redirect-to-brand-a.js
+// All domains using this function redirect to the same target
+var defined = { target: "https://www.brand-a.com", statusCode: 301 };
 
-async function handler(event) {
-  const host = event.request.headers.host.value;
-  const redirect = await kv.get(host);  // Sub-ms edge lookup
-
-  if (redirect) {
-    const { target, type } = JSON.parse(redirect);
-    return {
-      statusCode: type === 'permanent' ? 301 : 302,
-      headers: { location: { value: target + event.request.uri } }
-    };
-  }
-  // ... fallback handling
+function handler(event) {
+  return {
+    statusCode: defined.statusCode,
+    headers: {
+      location: { value: defined.target + event.request.uri }
+    }
+  };
 }
 ```
 
-KeyValueStore provides sub-millisecond lookups at the edge and allows updating redirect targets without redeploying the function.
+Distributions are associated with the appropriate function based on their target. For example:
+- `old-brand.com` and `legacy-site.net` both use `redirect-to-brand-a` function
+- `enterprise-old.com` uses `redirect-to-brand-b` function
+
+**Benefits of one function per destination:**
+- **Simpler function code** — No host header lookup or mapping table needed
+- **Clear separation** — Each function has a single responsibility
+- **Easier debugging** — Function name tells you exactly what it does
+- **Independent updates** — Changing brand-a's target doesn't touch brand-b's function
 
 ## Quick Start
 
@@ -187,7 +193,7 @@ redirector/
     ├── cdk.json
     ├── tsconfig.json
     └── lib/
-        ├── redirect-stack.ts       # Per-domain distributions + shared function
+        ├── redirect-stack.ts       # Per-domain distributions + per-destination functions
         └── pipeline-stack.ts       # CodePipeline + CodeBuild infrastructure
 ```
 
@@ -267,16 +273,6 @@ For most users (under 200 domains), no quota increase is needed.
 
 With one certificate per domain, you're well under this limit.
 
-### CloudFront KeyValueStore
-
-| Resource | Limit |
-|----------|-------|
-| Total size | 5 MB |
-| Key size | 512 bytes |
-| Value size | 1 KB |
-
-With ~100 bytes per domain entry, KeyValueStore can handle **50,000+ domains**.
-
 ### CloudFront Functions
 
 | Resource | Limit |
@@ -285,7 +281,7 @@ With ~100 bytes per domain entry, KeyValueStore can handle **50,000+ domains**.
 | Code size | 10 KB |
 | Execution time | <1 ms typical |
 
-This service uses **one shared function** across all distributions, so the function limit is not a concern.
+This service creates **one function per unique destination target**. With the default limit of 25 functions, you can have up to 25 different redirect targets. Request a quota increase if you need more destinations. Each function is tiny (~200 bytes), well under the 10KB limit.
 
 ## AWS Resources Created
 
@@ -296,11 +292,14 @@ This service uses **one shared function** across all distributions, so the funct
 | ACM Certificate | Single-domain SSL/TLS certificate (free) |
 | Route 53 Records | A/AAAA records pointing to distribution |
 
+**Per destination target:**
+| Resource | Description |
+|----------|-------------|
+| CloudFront Function | Redirect logic for that target (one function per unique destination) |
+
 **Shared (one total):**
 | Resource | Description |
 |----------|-------------|
-| CloudFront Function | Redirect logic at edge |
-| CloudFront KeyValueStore | Redirect target mappings |
 | CodePipeline | CI/CD pipeline |
 | CodeBuild | Build environment |
 
@@ -318,7 +317,6 @@ Cost breakdown:
 - HTTPS requests: $0.01 per 10,000
 - CloudFront Function: $0.10 per 1M invocations
 - ACM Certificates: Free
-- KeyValueStore: ~$0.05/month
 - CodePipeline: $1/month
 - Route 53: Included in hosted zone cost
 
@@ -433,11 +431,11 @@ This project was inspired by and builds upon ideas from:
 | ALB Redirect Rules | Requires running infrastructure, significantly more expensive |
 | API Gateway | Overkill for simple redirects, higher latency |
 
-One distribution per domain + CloudFront Functions provides:
-- **Simplicity**: Add a domain = create one distribution + one cert. No complex certificate management.
+One distribution per domain + one function per destination provides:
+- **Simplicity**: Add a domain = create one distribution + one cert. Add a new target = create one function.
 - **Performance**: Sub-millisecond redirects at the edge
 - **Cost**: Same as single-distribution (~$0.10 per million requests) — CloudFront pricing is usage-based
-- **Isolation**: Problems with one domain don't affect others
+- **Isolation**: Problems with one domain don't affect others; each function is independent
 - **Clean scaling**: Works the same way whether you have 5 domains or 200
 
 ## Contributing
