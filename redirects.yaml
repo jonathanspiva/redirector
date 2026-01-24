@@ -1,0 +1,27 @@
+# Domain Redirector Configuration
+# ================================
+# Edit this file to manage domain redirects.
+# Changes are automatically deployed when pushed to main.
+
+redirects:
+  # Legacy brand domains -> main site
+  - target: "https://www.brand-a.com"
+    type: permanent
+    description: "Legacy consumer brand domains"
+    domains:
+      - old-brand.com
+      - "*.old-brand.com"    # Wildcard catches all subdomains
+
+  # Acquired company domains -> landing page (no path preservation)
+  - target: "https://www.brand-a.com/acquired"
+    type: permanent
+    description: "Acquired company domains"
+    preservePath: false
+    domains:
+      - acquired-company.com
+      - "*.acquired-company.com"
+
+# Global settings (can be overridden per redirect group)
+settings:
+  preservePath: true    # Default: old.com/page -> target.com/page
+  preserveQuery: true   # Default: old.com?ref=x -> target.com?ref=x

@@ -1,0 +1,269 @@
+import * as cdk from 'aws-cdk-lib';
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
+import { Construct } from 'constructs';
+import * as path from 'path';
+import { loadAndValidateConfig } from './config/validator';
+import { getAllDomainConfigs, getUniqueTargets } from './config/parser';
+import { ResolvedDomainConfig } from './config/types';
+import { RedirectFunction, sanitizeFunctionName } from './constructs/redirect-function';
+
+export interface RedirectStackProps extends cdk.StackProps {
+  /** Optional path to the redirects.yaml configuration file */
+  configPath?: string;
+}
+
+/**
+ * Sanitize a string for use in CloudFormation logical IDs.
+ * Removes special characters and ensures valid ID format.
+ */
+function sanitizeLogicalId(input: string): string {
+  return input
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .substring(0, 64);
+}
+
+/**
+ * Extract the base domain for hosted zone lookup.
+ * Handles wildcards and subdomains by walking up the domain tree.
+ *
+ * Examples:
+ *   "*.old-brand.com" -> "old-brand.com"
+ *   "www.old-brand.com" -> "old-brand.com" (if no www zone exists)
+ *   "old-brand.com" -> "old-brand.com"
+ */
+function getBaseDomain(domain: string): string {
+  // Remove wildcard prefix if present
+  const cleanDomain = domain.startsWith('*.') ? domain.substring(2) : domain;
+  return cleanDomain;
+}
+
+/**
+ * Get the domain name for the certificate.
+ * Wildcards remain as-is, regular domains stay as-is.
+ */
+function getCertificateDomain(domain: string): string {
+  return domain;
+}
+
+/**
+ * Main stack for the domain redirector service.
+ *
+ * Creates:
+ * - One CloudFront Function per unique destination target
+ * - One CloudFront Distribution per source domain
+ * - One ACM Certificate per source domain
+ * - Route 53 A/AAAA records for each source domain
+ */
+export class RedirectStack extends cdk.Stack {
+  /** Map of target URL to CloudFront Function */
+  private readonly redirectFunctions: Map<string, cloudfront.Function> = new Map();
+
+  /** Cache of hosted zone lookups to avoid duplicate lookups */
+  private readonly hostedZoneCache: Map<string, route53.IHostedZone> = new Map();
+
+  constructor(scope: Construct, id: string, props?: RedirectStackProps) {
+    super(scope, id, props);
+
+    // Load and validate configuration
+    const configPath = props?.configPath ?? path.join(__dirname, '..', '..', 'redirects.yaml');
+    const config = loadAndValidateConfig(configPath);
+
+    // Apply default tags
+    cdk.Tags.of(this).add('Project', 'domain-redirector');
+    cdk.Tags.of(this).add('ManagedBy', 'cdk');
+
+    // Create CloudFront Functions for each unique target
+    const uniqueTargets = getUniqueTargets(config);
+    for (const targetConfig of uniqueTargets) {
+      this.createRedirectFunction(targetConfig);
+    }
+
+    // Create resources for each active domain
+    const domainConfigs = getAllDomainConfigs(config);
+    for (const domainConfig of domainConfigs) {
+      this.createDomainResources(domainConfig);
+    }
+  }
+
+  /**
+   * Create a CloudFront Function for a redirect target.
+   */
+  private createRedirectFunction(config: ResolvedDomainConfig): void {
+    const functionId = sanitizeLogicalId(`RedirectFn${config.target}`);
+
+    const redirectFunction = new RedirectFunction(this, functionId, {
+      target: config.target,
+      statusCode: config.statusCode,
+      preservePath: config.preservePath,
+      preserveQuery: config.preserveQuery,
+    });
+
+    this.redirectFunctions.set(config.target, redirectFunction.function);
+  }
+
+  /**
+   * Create all resources for a single domain.
+   */
+  private createDomainResources(config: ResolvedDomainConfig): void {
+    const domainId = sanitizeLogicalId(config.domain);
+
+    // Look up the hosted zone
+    const hostedZone = this.lookupHostedZone(config.domain);
+
+    // Create ACM certificate
+    const certificate = this.createCertificate(domainId, config.domain, hostedZone);
+
+    // Get the redirect function for this target
+    const redirectFunction = this.redirectFunctions.get(config.target);
+    if (!redirectFunction) {
+      throw new Error(`No redirect function found for target: ${config.target}`);
+    }
+
+    // Create CloudFront distribution
+    const distribution = this.createDistribution(
+      domainId,
+      config.domain,
+      certificate,
+      redirectFunction
+    );
+
+    // Create Route 53 records
+    this.createDnsRecords(domainId, config.domain, hostedZone, distribution);
+  }
+
+  /**
+   * Look up the Route 53 hosted zone for a domain.
+   * Walks up the domain tree to find the appropriate zone.
+   */
+  private lookupHostedZone(domain: string): route53.IHostedZone {
+    const baseDomain = getBaseDomain(domain);
+    const parts = baseDomain.split('.');
+
+    // Try each level of the domain hierarchy
+    for (let i = 0; i < parts.length - 1; i++) {
+      const zoneName = parts.slice(i).join('.');
+
+      // Check cache first
+      if (this.hostedZoneCache.has(zoneName)) {
+        return this.hostedZoneCache.get(zoneName)!;
+      }
+
+      // Try to look up the zone
+      try {
+        const zone = route53.HostedZone.fromLookup(this, `Zone${sanitizeLogicalId(zoneName)}`, {
+          domainName: zoneName,
+        });
+
+        // Cache for future lookups
+        this.hostedZoneCache.set(zoneName, zone);
+        return zone;
+      } catch {
+        // Zone not found at this level, try parent
+        continue;
+      }
+    }
+
+    throw new Error(
+      `No Route 53 hosted zone found for ${domain}. ` +
+      `Please ensure a hosted zone exists for this domain or one of its parent domains.`
+    );
+  }
+
+  /**
+   * Create an ACM certificate for a domain.
+   */
+  private createCertificate(
+    domainId: string,
+    domain: string,
+    hostedZone: route53.IHostedZone
+  ): acm.ICertificate {
+    const certDomain = getCertificateDomain(domain);
+
+    return new acm.Certificate(this, `Cert${domainId}`, {
+      domainName: certDomain,
+      validation: acm.CertificateValidation.fromDns(hostedZone),
+    });
+  }
+
+  /**
+   * Create a CloudFront distribution for a domain.
+   */
+  private createDistribution(
+    domainId: string,
+    domain: string,
+    certificate: acm.ICertificate,
+    redirectFunction: cloudfront.Function
+  ): cloudfront.Distribution {
+    return new cloudfront.Distribution(this, `Dist${domainId}`, {
+      domainNames: [domain],
+      certificate,
+      defaultBehavior: {
+        origin: new DummyOrigin(),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        functionAssociations: [{
+          function: redirectFunction,
+          eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+        }],
+        cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+      },
+      minimumProtocolVersion: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
+      comment: `Redirect ${domain}`,
+    });
+  }
+
+  /**
+   * Create Route 53 A and AAAA records for a domain.
+   */
+  private createDnsRecords(
+    domainId: string,
+    domain: string,
+    hostedZone: route53.IHostedZone,
+    distribution: cloudfront.Distribution
+  ): void {
+    const recordName = domain.startsWith('*.') ? domain : domain;
+
+    // A record (IPv4)
+    new route53.ARecord(this, `ARecord${domainId}`, {
+      zone: hostedZone,
+      recordName,
+      target: route53.RecordTarget.fromAlias(
+        new route53Targets.CloudFrontTarget(distribution)
+      ),
+    });
+
+    // AAAA record (IPv6)
+    new route53.AaaaRecord(this, `AAAARecord${domainId}`, {
+      zone: hostedZone,
+      recordName,
+      target: route53.RecordTarget.fromAlias(
+        new route53Targets.CloudFrontTarget(distribution)
+      ),
+    });
+  }
+}
+
+/**
+ * A dummy origin for CloudFront distributions.
+ *
+ * CloudFront requires an origin, but our CloudFront Function handles
+ * all requests before they reach the origin. This provides a minimal
+ * origin configuration that will never be reached.
+ */
+class DummyOrigin implements cloudfront.IOrigin {
+  bind(_scope: Construct, _options: cloudfront.OriginBindOptions): cloudfront.OriginBindConfig {
+    return {
+      originProperty: {
+        domainName: 'dummy-origin.example.com',
+        id: 'dummy-origin',
+        customOriginConfig: {
+          originProtocolPolicy: 'https-only',
+          httpPort: 80,
+          httpsPort: 443,
+        },
+      },
+    };
+  }
+}
