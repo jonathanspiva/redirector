@@ -22,6 +22,11 @@ import {
   ListResourceRecordSetsCommand,
   HostedZone,
 } from '@aws-sdk/client-route-53';
+import {
+  CloudFrontClient,
+  ListDistributionsCommand,
+  DistributionSummary,
+} from '@aws-sdk/client-cloudfront';
 import { loadAndValidateConfig } from '../lib/config/validator';
 import { getAllDomainConfigs } from '../lib/config/parser';
 
@@ -33,11 +38,17 @@ interface PreflightResult {
 }
 
 const route53 = new Route53Client({ region: 'us-east-1' });
+const cloudfront = new CloudFrontClient({ region: 'us-east-1' });
 
 /**
  * Cache of hosted zones to avoid repeated API calls.
  */
 let hostedZonesCache: HostedZone[] | null = null;
+
+/**
+ * Cache of CloudFront distributions to avoid repeated API calls.
+ */
+let distributionsCache: DistributionSummary[] | null = null;
 
 /**
  * Get all hosted zones in the account.
@@ -62,6 +73,63 @@ async function getHostedZones(): Promise<HostedZone[]> {
 
   hostedZonesCache = zones;
   return zones;
+}
+
+/**
+ * Get all CloudFront distributions in the account.
+ */
+async function getDistributions(): Promise<DistributionSummary[]> {
+  if (distributionsCache) {
+    return distributionsCache;
+  }
+
+  const distributions: DistributionSummary[] = [];
+  let marker: string | undefined;
+
+  do {
+    const response = await cloudfront.send(
+      new ListDistributionsCommand({ Marker: marker })
+    );
+    if (response.DistributionList?.Items) {
+      distributions.push(...response.DistributionList.Items);
+    }
+    marker = response.DistributionList?.NextMarker;
+  } while (marker);
+
+  distributionsCache = distributions;
+  return distributions;
+}
+
+interface CloudFrontConflict {
+  hasConflict: boolean;
+  distributionId?: string;
+  distributionDomain?: string;
+  isOurStack?: boolean;
+}
+
+/**
+ * Check if a domain's CNAME is already used by a CloudFront distribution.
+ * Returns conflict info if found, including whether it appears to be from our stack.
+ */
+async function checkCloudFrontConflict(domain: string): Promise<CloudFrontConflict> {
+  const distributions = await getDistributions();
+
+  for (const dist of distributions) {
+    const aliases = dist.Aliases?.Items || [];
+    if (aliases.includes(domain)) {
+      // Check if this distribution is managed by our stack (comment starts with "Redirect ")
+      const isOurStack = dist.Comment?.startsWith('Redirect ') || false;
+
+      return {
+        hasConflict: true,
+        distributionId: dist.Id,
+        distributionDomain: dist.DomainName,
+        isOurStack,
+      };
+    }
+  }
+
+  return { hasConflict: false };
 }
 
 /**
@@ -134,6 +202,18 @@ async function checkExistingRecords(
  */
 async function checkDomain(domain: string): Promise<PreflightResult> {
   try {
+    // Check for CloudFront CNAME conflict FIRST (most common issue)
+    const cfConflict = await checkCloudFrontConflict(domain);
+    if (cfConflict.hasConflict && !cfConflict.isOurStack) {
+      return {
+        domain,
+        status: 'error',
+        message: 'CloudFront CNAME conflict',
+        details: `Domain is already on distribution ${cfConflict.distributionId} (${cfConflict.distributionDomain}). ` +
+          `Remove the CNAME from that distribution first.`,
+      };
+    }
+
     // Check for hosted zone
     const zone = await findHostedZone(domain);
     if (!zone || !zone.Id) {
@@ -153,12 +233,21 @@ async function checkDomain(domain: string): Promise<PreflightResult> {
       const recordTypes = [hasA && 'A', hasAAAA && 'AAAA'].filter(Boolean).join(', ');
 
       if (isAlias) {
-        // Alias records might be from a previous deployment - this is usually OK
+        // If CloudFront distribution exists and is ours, this is fine
+        if (cfConflict.hasConflict && cfConflict.isOurStack) {
+          return {
+            domain,
+            status: 'ok',
+            message: `Ready (existing records from our stack)`,
+          };
+        }
+
+        // Alias records pointing to something else - this will conflict
         return {
           domain,
-          status: 'warning',
-          message: `Existing alias ${recordTypes} record(s) found`,
-          details: 'May be from previous deployment - will be updated',
+          status: 'error',
+          message: `Existing alias ${recordTypes} record(s) point to external resource`,
+          details: `Delete the records pointing to external resources first`,
         };
       }
 
@@ -167,6 +256,15 @@ async function checkDomain(domain: string): Promise<PreflightResult> {
         status: 'error',
         message: `Existing ${recordTypes} record(s) will cause conflict`,
         details: `Delete existing records or remove domain from config`,
+      };
+    }
+
+    // If our CloudFront distribution already has this CNAME, that's fine
+    if (cfConflict.hasConflict && cfConflict.isOurStack) {
+      return {
+        domain,
+        status: 'ok',
+        message: `Ready (existing distribution from our stack)`,
       };
     }
 
