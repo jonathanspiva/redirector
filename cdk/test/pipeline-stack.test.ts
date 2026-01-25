@@ -274,8 +274,8 @@ describe('PipelineStack', () => {
   });
 
   describe('Tags', () => {
-    it('should apply Project tag', () => {
-      expect(stack.tags.tagValues()).toHaveProperty('Project', 'domain-redirector');
+    it('should apply Service tag', () => {
+      expect(stack.tags.tagValues()).toHaveProperty('Service', 'domain-redirector');
     });
 
     it('should apply ManagedBy tag', () => {

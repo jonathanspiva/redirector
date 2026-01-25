@@ -40,7 +40,7 @@ export class RedirectStack extends cdk.Stack {
     const config = loadAndValidateConfig(configPath);
 
     // Apply default tags
-    cdk.Tags.of(this).add('Project', 'domain-redirector');
+    cdk.Tags.of(this).add('Service', 'domain-redirector');
     cdk.Tags.of(this).add('ManagedBy', 'cdk');
     cdk.Tags.of(this).add('Environment', 'prod');
 
