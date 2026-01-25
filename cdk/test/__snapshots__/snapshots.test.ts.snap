@@ -248,7 +248,7 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
             "Value": "domain-redirector",
           },
         ],
-        "TimeoutInMinutes": 10,
+        "TimeoutInMinutes": 12,
       },
       "Type": "AWS::CodeBuild::Project",
     },
