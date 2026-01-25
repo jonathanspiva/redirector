@@ -29,6 +29,7 @@ import {
 } from '@aws-sdk/client-cloudfront';
 import { loadAndValidateConfig } from '../lib/config/validator';
 import { getAllDomainConfigs } from '../lib/config/parser';
+import { getDomainHierarchy } from '../lib/utils/domain';
 
 interface PreflightResult {
   domain: string;
@@ -138,17 +139,15 @@ async function checkCloudFrontConflict(domain: string): Promise<CloudFrontConfli
  */
 async function findHostedZone(domain: string): Promise<HostedZone | null> {
   const zones = await getHostedZones();
-
-  // Remove wildcard prefix if present
-  const baseDomain = domain.startsWith('*.') ? domain.substring(2) : domain;
-  const parts = baseDomain.split('.');
+  const hierarchy = getDomainHierarchy(domain);
 
   // Try each level of the domain hierarchy
-  for (let i = 0; i < parts.length - 1; i++) {
-    const zoneName = parts.slice(i).join('.') + '.';
+  for (const zoneName of hierarchy) {
+    // Route53 zone names have trailing dot
+    const zoneNameWithDot = zoneName + '.';
 
     const zone = zones.find(
-      (z) => z.Name === zoneName && !z.Config?.PrivateZone
+      (z) => z.Name === zoneNameWithDot && !z.Config?.PrivateZone
     );
     if (zone) {
       return zone;

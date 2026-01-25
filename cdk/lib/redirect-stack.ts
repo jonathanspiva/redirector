@@ -9,20 +9,11 @@ import { loadAndValidateConfig } from './config/validator';
 import { getAllDomainConfigs, getUniqueTargets } from './config/parser';
 import { ResolvedDomainConfig } from './config/types';
 import { RedirectFunction, sanitizeFunctionName } from './constructs/redirect-function';
+import { getDomainHierarchy, sanitizeLogicalId } from './utils/domain';
 
 export interface RedirectStackProps extends cdk.StackProps {
   /** Optional path to the redirects.yaml configuration file */
   configPath?: string;
-}
-
-/**
- * Sanitize a string for use in CloudFormation logical IDs.
- * Removes special characters and ensures valid ID format.
- */
-function sanitizeLogicalId(input: string): string {
-  return input
-    .replace(/[^a-zA-Z0-9]/g, '')
-    .substring(0, 64);
 }
 
 /**
@@ -117,14 +108,10 @@ export class RedirectStack extends cdk.Stack {
    * Walks up the domain tree to find the appropriate zone.
    */
   private lookupHostedZone(domain: string): route53.IHostedZone {
-    // Remove wildcard prefix if present
-    const baseDomain = domain.startsWith('*.') ? domain.substring(2) : domain;
-    const parts = baseDomain.split('.');
+    const hierarchy = getDomainHierarchy(domain);
 
     // Try each level of the domain hierarchy
-    for (let i = 0; i < parts.length - 1; i++) {
-      const zoneName = parts.slice(i).join('.');
-
+    for (const zoneName of hierarchy) {
       // Check cache first
       if (this.hostedZoneCache.has(zoneName)) {
         return this.hostedZoneCache.get(zoneName)!;
