@@ -7,7 +7,7 @@
 
 import { App, Aspects, Stack } from 'aws-cdk-lib';
 import { Annotations, Match } from 'aws-cdk-lib/assertions';
-import { AwsSolutionsChecks, NagSuppressions } from 'cdk-nag';
+import { AwsSolutionsChecks } from 'cdk-nag';
 import { PipelineStack } from '../lib/pipeline-stack';
 
 describe('cdk-nag AwsSolutions compliance', () => {

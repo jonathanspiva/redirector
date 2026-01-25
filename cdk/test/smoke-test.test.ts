@@ -198,7 +198,7 @@ describe('testDomain', () => {
       expect(mockRequest.destroy).toHaveBeenCalled();
     });
 
-    it('should handle ERR_FR_TOO_MANY_REDIRECTS as success', async () => {
+    it('should handle ERR_FR_TOO_MANY_REDIRECTS as warning', async () => {
       const redirectError = new Error('Too many redirects') as NodeJS.ErrnoException;
       redirectError.code = 'ERR_FR_TOO_MANY_REDIRECTS';
 
@@ -212,8 +212,9 @@ describe('testDomain', () => {
       const config = createConfig();
       const result = await testDomain(config);
 
-      expect(result.passed).toBe(true);
-      expect(result.message).toContain('Redirect detected');
+      expect(result.passed).toBe(false);
+      expect(result.error).toBe('redirect_loop');
+      expect(result.message).toContain('Too many redirects');
     });
   });
 
@@ -228,6 +229,73 @@ describe('testDomain', () => {
         expect.objectContaining({ timeout: 10000 }),
         expect.any(Function)
       );
+    });
+  });
+
+  describe('edge cases', () => {
+    it('should handle ECONNREFUSED error', async () => {
+      const connError = new Error('connect ECONNREFUSED') as NodeJS.ErrnoException;
+      connError.code = 'ECONNREFUSED';
+
+      mockedHttps.get.mockImplementation((_url, _options, _callback) => {
+        process.nextTick(() => {
+          mockRequest.emit('error', connError);
+        });
+        return mockRequest as unknown as http.ClientRequest;
+      });
+
+      const config = createConfig();
+      const result = await testDomain(config);
+
+      expect(result.passed).toBe(false);
+      expect(result.message).toContain('Connection error');
+    });
+
+    it('should handle ENOTFOUND error', async () => {
+      const dnsError = new Error('getaddrinfo ENOTFOUND') as NodeJS.ErrnoException;
+      dnsError.code = 'ENOTFOUND';
+
+      mockedHttps.get.mockImplementation((_url, _options, _callback) => {
+        process.nextTick(() => {
+          mockRequest.emit('error', dnsError);
+        });
+        return mockRequest as unknown as http.ClientRequest;
+      });
+
+      const config = createConfig();
+      const result = await testDomain(config);
+
+      expect(result.passed).toBe(false);
+      expect(result.error).toContain('ENOTFOUND');
+    });
+
+    it('should handle response with non-redirect status code', async () => {
+      mockResponse.statusCode = 200;
+
+      const config = createConfig();
+      const result = await testDomain(config);
+
+      expect(result.passed).toBe(false);
+      expect(result.message).toContain('Expected 301, got 200');
+    });
+
+    it('should handle 302 status code for temporary redirect', async () => {
+      mockResponse.statusCode = 302;
+      mockResponse.headers.location = 'https://www.example.com/test-path?test=param';
+
+      const config = createConfig({ statusCode: 302 });
+      const result = await testDomain(config);
+
+      expect(result.passed).toBe(true);
+    });
+
+    it('should pass when path preservation not required and not present', async () => {
+      mockResponse.headers.location = 'https://www.example.com';
+
+      const config = createConfig({ preservePath: false, preserveQuery: false });
+      const result = await testDomain(config);
+
+      expect(result.passed).toBe(true);
     });
   });
 });

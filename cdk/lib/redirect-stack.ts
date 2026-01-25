@@ -8,7 +8,7 @@ import * as path from 'path';
 import { loadAndValidateConfig } from './config/validator';
 import { getAllDomainConfigs, getUniqueTargets } from './config/parser';
 import { ResolvedDomainConfig } from './config/types';
-import { RedirectFunction, sanitizeFunctionName } from './constructs/redirect-function';
+import { RedirectFunction } from './constructs/redirect-function';
 import { getDomainHierarchy, sanitizeLogicalId } from './utils/domain';
 
 export interface RedirectStackProps extends cdk.StackProps {

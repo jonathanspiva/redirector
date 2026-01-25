@@ -1498,29 +1498,48 @@ exports[`RedirectStack Snapshots should match CloudFormation template snapshot 1
     "RedirectFnhttpswwwprimarycomFunction0FB061AA": {
       "Properties": {
         "AutoPublish": true,
-        "FunctionCode": "var defined = {
-  target: "https://www.primary.com",
+        "FunctionCode": "/**
+ * CloudFront Function template for HTTP redirects.
+ *
+ * This is ES5-compatible JavaScript as required by CloudFront Functions.
+ * The {{PLACEHOLDER}} values are replaced at CDK synthesis time.
+ *
+ * @see https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/functions-javascript-runtime-features.html
+ */
+
+var config = {
+  target: 'https://www.primary.com',
   statusCode: 301,
   preservePath: true,
   preserveQuery: true
 };
 
 function handler(event) {
-  var url = defined.target;
-  if (defined.preservePath) {
+  var url = config.target;
+
+  if (config.preservePath) {
     url += event.request.uri;
   }
-  if (defined.preserveQuery) {
+
+  if (config.preserveQuery) {
     var qs = Object.keys(event.request.querystring)
-      .map(function(k) { return k + "=" + event.request.querystring[k].value; })
-      .join("&");
-    if (qs) url += "?" + qs;
+      .map(function(k) {
+        return k + '=' + event.request.querystring[k].value;
+      })
+      .join('&');
+    if (qs) {
+      url += '?' + qs;
+    }
   }
+
   return {
-    statusCode: defined.statusCode,
-    headers: { location: { value: url } }
+    statusCode: config.statusCode,
+    headers: {
+      location: { value: url }
+    }
   };
-}",
+}
+",
         "FunctionConfig": {
           "Comment": "Redirect to https://www.primary.com",
           "Runtime": "cloudfront-js-2.0",
@@ -1532,29 +1551,48 @@ function handler(event) {
     "RedirectFnhttpswwwsecondarycomlandingFunctionE62F3E54": {
       "Properties": {
         "AutoPublish": true,
-        "FunctionCode": "var defined = {
-  target: "https://www.secondary.com/landing",
+        "FunctionCode": "/**
+ * CloudFront Function template for HTTP redirects.
+ *
+ * This is ES5-compatible JavaScript as required by CloudFront Functions.
+ * The {{PLACEHOLDER}} values are replaced at CDK synthesis time.
+ *
+ * @see https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/functions-javascript-runtime-features.html
+ */
+
+var config = {
+  target: 'https://www.secondary.com/landing',
   statusCode: 302,
   preservePath: false,
   preserveQuery: false
 };
 
 function handler(event) {
-  var url = defined.target;
-  if (defined.preservePath) {
+  var url = config.target;
+
+  if (config.preservePath) {
     url += event.request.uri;
   }
-  if (defined.preserveQuery) {
+
+  if (config.preserveQuery) {
     var qs = Object.keys(event.request.querystring)
-      .map(function(k) { return k + "=" + event.request.querystring[k].value; })
-      .join("&");
-    if (qs) url += "?" + qs;
+      .map(function(k) {
+        return k + '=' + event.request.querystring[k].value;
+      })
+      .join('&');
+    if (qs) {
+      url += '?' + qs;
+    }
   }
+
   return {
-    statusCode: defined.statusCode,
-    headers: { location: { value: url } }
+    statusCode: config.statusCode,
+    headers: {
+      location: { value: url }
+    }
   };
-}",
+}
+",
         "FunctionConfig": {
           "Comment": "Redirect to https://www.secondary.com/landing",
           "Runtime": "cloudfront-js-2.0",

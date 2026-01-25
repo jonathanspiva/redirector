@@ -1,5 +1,7 @@
 import { Construct } from 'constructs';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * Properties for the RedirectFunction construct.
@@ -62,35 +64,34 @@ function simpleHash(str: string): number {
   return Math.abs(hash);
 }
 
+/** Cached template content */
+let templateCache: string | null = null;
+
+/**
+ * Load the CloudFront Function template.
+ */
+function loadTemplate(): string {
+  if (templateCache === null) {
+    const templatePath = path.join(__dirname, 'redirect-function.template.js');
+    templateCache = fs.readFileSync(templatePath, 'utf-8');
+  }
+  return templateCache;
+}
+
 /**
  * Generate the CloudFront Function code for a redirect.
  *
- * This generates ES5-compatible JavaScript (CloudFront Functions requirement).
+ * Loads the template from redirect-function.template.js and replaces placeholders.
+ * This approach provides better IDE support with syntax highlighting.
  */
 export function generateFunctionCode(props: RedirectFunctionProps): string {
-  return `var defined = {
-  target: "${props.target}",
-  statusCode: ${props.statusCode},
-  preservePath: ${props.preservePath},
-  preserveQuery: ${props.preserveQuery}
-};
+  const template = loadTemplate();
 
-function handler(event) {
-  var url = defined.target;
-  if (defined.preservePath) {
-    url += event.request.uri;
-  }
-  if (defined.preserveQuery) {
-    var qs = Object.keys(event.request.querystring)
-      .map(function(k) { return k + "=" + event.request.querystring[k].value; })
-      .join("&");
-    if (qs) url += "?" + qs;
-  }
-  return {
-    statusCode: defined.statusCode,
-    headers: { location: { value: url } }
-  };
-}`;
+  return template
+    .replace('{{TARGET}}', props.target)
+    .replace('{{STATUS_CODE}}', String(props.statusCode))
+    .replace('{{PRESERVE_PATH}}', String(props.preservePath))
+    .replace('{{PRESERVE_QUERY}}', String(props.preserveQuery));
 }
 
 /**

@@ -262,6 +262,33 @@ describe('sanitizeFunctionName', () => {
     expect(result.length).toBeLessThanOrEqual(64);
     expect(result).toMatch(/^redirector-/);
   });
+
+  it('should produce unique names for different long URLs', () => {
+    const url1 = 'https://www.very-long-domain-name-that-exceeds-the-limit.example.com/first-path';
+    const url2 = 'https://www.another-very-long-domain-name-exceeds-limit.different.com/second';
+    const result1 = sanitizeFunctionName(url1);
+    const result2 = sanitizeFunctionName(url2);
+    expect(result1.length).toBeLessThanOrEqual(64);
+    expect(result2.length).toBeLessThanOrEqual(64);
+    expect(result1).not.toBe(result2);
+  });
+
+  it('should handle URLs with special characters', () => {
+    const url = 'https://example.com/path?query=value&foo=bar#anchor';
+    const result = sanitizeFunctionName(url);
+    expect(result).not.toContain('?');
+    expect(result).not.toContain('&');
+    expect(result).not.toContain('=');
+    expect(result).not.toContain('#');
+    expect(result).toMatch(/^redirector-[a-z0-9-]+$/);
+  });
+
+  it('should handle unicode characters in URLs', () => {
+    const url = 'https://example.com/日本語';
+    const result = sanitizeFunctionName(url);
+    expect(result).toMatch(/^redirector-[a-z0-9-]+$/);
+    expect(result.length).toBeLessThanOrEqual(64);
+  });
 });
 
 describe('generateFunctionCode', () => {
@@ -274,7 +301,7 @@ describe('generateFunctionCode', () => {
     });
 
     expect(code).toContain('function handler(event)');
-    expect(code).toContain('target: "https://www.example.com"');
+    expect(code).toContain("target: 'https://www.example.com'");
     expect(code).toContain('statusCode: 301');
     expect(code).toContain('preservePath: true');
     expect(code).toContain('preserveQuery: true');
@@ -291,6 +318,41 @@ describe('generateFunctionCode', () => {
     expect(code).toContain('statusCode: 302');
     expect(code).toContain('preservePath: false');
     expect(code).toContain('preserveQuery: false');
+  });
+
+  it('should handle URLs with paths', () => {
+    const code = generateFunctionCode({
+      target: 'https://example.com/subpath/deep',
+      statusCode: 301,
+      preservePath: true,
+      preserveQuery: true,
+    });
+
+    expect(code).toContain("target: 'https://example.com/subpath/deep'");
+  });
+
+  it('should handle special characters in target URL', () => {
+    const code = generateFunctionCode({
+      target: "https://example.com/path?default=value",
+      statusCode: 301,
+      preservePath: false,
+      preserveQuery: false,
+    });
+
+    // Verify the URL is included correctly
+    expect(code).toContain("https://example.com/path?default=value");
+  });
+
+  it('should generate syntactically valid JavaScript', () => {
+    const code = generateFunctionCode({
+      target: 'https://example.com',
+      statusCode: 301,
+      preservePath: true,
+      preserveQuery: true,
+    });
+
+    // Should not throw when parsed
+    expect(() => new Function(code)).not.toThrow();
   });
 });
 

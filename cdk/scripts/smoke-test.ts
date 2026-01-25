@@ -10,7 +10,6 @@
  */
 
 import * as https from 'https';
-import * as http from 'http';
 import { loadAndValidateConfig } from '../lib/config/validator';
 import { getAllDomainConfigs } from '../lib/config/parser';
 import { ResolvedDomainConfig } from '../lib/config/types';
@@ -108,12 +107,13 @@ async function testDomain(config: ResolvedDomainConfig): Promise<TestResult> {
     });
 
     request.on('error', (error: NodeJS.ErrnoException) => {
-      // Handle redirect response as success (node's http doesn't auto-follow)
+      // Too many redirects indicates a redirect chain problem - treat as warning
       if (error.code === 'ERR_FR_TOO_MANY_REDIRECTS') {
         resolve({
           domain,
-          passed: true,
-          message: 'Redirect detected (manual verification recommended)',
+          passed: false,
+          message: 'Too many redirects - possible redirect loop or chain issue',
+          error: 'redirect_loop',
         });
         return;
       }
@@ -212,6 +212,9 @@ async function runSmokeTests(configPath?: string): Promise<void> {
     } else if (result.error === 'timeout' || result.error?.includes('ENOTFOUND')) {
       warnCount++;
       console.log(`\u26A0 ${result.domain}: ${result.message} (may still be propagating)`);
+    } else if (result.error === 'redirect_loop') {
+      warnCount++;
+      console.log(`\u26A0 ${result.domain}: ${result.message} (check redirect configuration)`);
     } else {
       failCount++;
       console.log(`\u2717 ${result.domain}: ${result.message}`);
@@ -229,7 +232,10 @@ async function runSmokeTests(configPath?: string): Promise<void> {
   if (failCount > 0) {
     console.log('\nFailed domains:');
     for (const result of results) {
-      if (!result.passed && result.error !== 'timeout' && !result.error?.includes('ENOTFOUND')) {
+      const isWarning = result.error === 'timeout' ||
+                        result.error?.includes('ENOTFOUND') ||
+                        result.error === 'redirect_loop';
+      if (!result.passed && !isWarning) {
         console.log(`  - ${result.domain}: ${result.message}`);
       }
     }
