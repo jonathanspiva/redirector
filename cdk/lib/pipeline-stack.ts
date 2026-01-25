@@ -92,7 +92,7 @@ export class PipelineStack extends cdk.Stack {
         privileged: false, // Explicitly disable privileged mode
       },
       buildSpec: codebuild.BuildSpec.fromSourceFilename('buildspec.yml'),
-      timeout: cdk.Duration.minutes(30),
+      timeout: cdk.Duration.minutes(10),
       encryptionKey: artifactKey, // Use same KMS key for build artifacts
     });
 

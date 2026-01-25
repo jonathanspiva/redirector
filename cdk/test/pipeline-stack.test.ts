@@ -99,9 +99,9 @@ describe('PipelineStack', () => {
       });
     });
 
-    it('should have a 30 minute timeout', () => {
+    it('should have a 10 minute timeout', () => {
       template.hasResourceProperties('AWS::CodeBuild::Project', {
-        TimeoutInMinutes: 30,
+        TimeoutInMinutes: 10,
       });
     });
   });
