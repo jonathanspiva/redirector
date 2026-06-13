@@ -24,7 +24,7 @@
     "validate": "ts-node lib/config/validator.ts",
     "preflight": "ts-node scripts/preflight-check.ts",
     "smoke-test": "ts-node scripts/smoke-test.ts",
-    "smart-deploy": "ts-node scripts/smart-deploy.ts"
+    "deploy": "cdk deploy RedirectStack --require-approval never --outputs-file outputs.json"
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",

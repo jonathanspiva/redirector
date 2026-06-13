@@ -105,7 +105,8 @@ export class RedirectStack extends cdk.Stack {
 
   /**
    * Look up the Route 53 hosted zone for a domain.
-   * Walks up the domain tree to find the appropriate zone.
+   * Walks up the domain hierarchy to find the appropriate zone, caching
+   * results so multiple domains in the same zone reuse a single lookup.
    */
   private lookupHostedZone(domain: string): route53.IHostedZone {
     const hierarchy = getDomainHierarchy(domain);
@@ -187,7 +188,7 @@ export class RedirectStack extends cdk.Stack {
     hostedZone: route53.IHostedZone,
     distribution: cloudfront.Distribution
   ): void {
-    const recordName = domain.startsWith('*.') ? domain : domain;
+    const recordName = domain;
 
     // A record (IPv4)
     new route53.ARecord(this, `ARecord${domainId}`, {

@@ -24,7 +24,12 @@ function handler(event) {
   if (config.preserveQuery) {
     var qs = Object.keys(event.request.querystring)
       .map(function(k) {
-        return k + '=' + event.request.querystring[k].value;
+        var entry = event.request.querystring[k];
+        // A repeated key (?a=1&a=2) exposes its extra values in multiValue.
+        var values = entry.multiValue
+          ? entry.multiValue.map(function(mv) { return mv.value; })
+          : [entry.value];
+        return values.map(function(v) { return k + '=' + v; }).join('&');
       })
       .join('&');
     if (qs) {

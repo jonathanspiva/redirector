@@ -19,7 +19,8 @@ const DEFAULT_SETTINGS: Settings = {
  * 2. REDIRECTS_CONFIG environment variable
  * 3. redirects.yaml in current working directory
  * 4. redirects.yaml in parent directory (submodule setup)
- * 5. redirects.example.yaml in repo root (development/demo)
+ * 5. redirects.yaml two levels up (running from the cdk/ subdir)
+ * 6. redirects.example.yaml in repo root (development/demo)
  */
 function resolveConfigPath(configPath?: string): string {
   // 1. Explicit path

@@ -161,6 +161,42 @@ function validateRedirectGroup(
 }
 
 /**
+ * Ensure every active group pointing at the same target resolves to identical
+ * redirect behavior (status code, path/query preservation). These groups share
+ * one CloudFront Function, so divergent settings cannot both be honored.
+ */
+function validateTargetConsistency(config: RedirectConfig): ValidationError[] {
+  const errors: ValidationError[] = [];
+  const preservePathDefault = config.settings?.preservePath ?? true;
+  const preserveQueryDefault = config.settings?.preserveQuery ?? true;
+  const seenTargets = new Map<string, { index: number; signature: string }>();
+
+  config.redirects.forEach((group, index) => {
+    if (group.active === false) return;
+    if (typeof group.target !== 'string' || group.target === '') return;
+
+    const statusCode = group.type === 'permanent' ? 301 : 302;
+    const preservePath = group.preservePath ?? preservePathDefault;
+    const preserveQuery = group.preserveQuery ?? preserveQueryDefault;
+    const signature = `${statusCode}|${preservePath}|${preserveQuery}`;
+
+    const existing = seenTargets.get(group.target);
+    if (!existing) {
+      seenTargets.set(group.target, { index, signature });
+    } else if (existing.signature !== signature) {
+      errors.push({
+        path: `redirects[${index}]`,
+        message:
+          `target "${group.target}" has settings that conflict with redirects[${existing.index}]; ` +
+          'groups sharing a target must use the same type, preservePath, and preserveQuery',
+      });
+    }
+  });
+
+  return errors;
+}
+
+/**
  * Validate the entire redirect configuration.
  *
  * @param config - The configuration to validate
@@ -180,6 +216,12 @@ export function validateConfig(config: RedirectConfig): ValidationResult {
       const groupErrors = validateRedirectGroup(group, index, seenDomains);
       errors.push(...groupErrors);
     });
+
+    // All domains sharing a target share a single CloudFront Function, whose
+    // behavior is built from the first group's settings. If two active groups
+    // point at the same target with different type/preserve* settings, one
+    // group's intent would be silently dropped, so reject it here.
+    errors.push(...validateTargetConsistency(config));
   }
 
   // Validate settings

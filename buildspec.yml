@@ -3,7 +3,6 @@ version: 0.2
 env:
   variables:
     NODE_VERSION: "20"
-    FORCE_DEPLOY: "true"  # Set to "false" to skip deploy when redirects already work
 
 phases:
   install:
@@ -24,9 +23,11 @@ phases:
 
   build:
     commands:
-      - echo "Running smart deploy..."
-      # FORCE_DEPLOY=true by default; set to "false" to skip deploy when redirects work
-      - cd cdk && npm run smart-deploy -- ../redirects.yaml
+      - echo "Deploying with CDK..."
+      - cd cdk && npm run deploy
+      - echo "Running post-deployment smoke tests..."
+      # Non-blocking: freshly created domains can take time to propagate (DNS up to 48h)
+      - cd cdk && npm run smoke-test -- ../redirects.yaml || echo "Smoke tests reported failures - new domains may still be propagating"
       - echo "Build complete"
 
 artifacts:

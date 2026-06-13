@@ -138,7 +138,7 @@ export class PipelineStack extends cdk.Stack {
 
     // Output the pipeline ARN
     new cdk.CfnOutput(this, 'PipelineArn', {
-      value: `arn:aws:codepipeline:${this.region}:${this.account}:domain-redirector`,
+      value: pipeline.pipelineArn,
       description: 'CodePipeline ARN',
     });
   }

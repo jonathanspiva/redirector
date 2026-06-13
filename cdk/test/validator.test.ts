@@ -651,4 +651,62 @@ describe('additional branch coverage', () => {
       )).toBe(true);
     });
   });
+
+  describe('target consistency validation', () => {
+    it('should accept multiple groups sharing a target with identical settings', () => {
+      const config: RedirectConfig = {
+        redirects: [
+          { target: 'https://www.example.com', type: 'permanent', domains: ['a.com'] },
+          { target: 'https://www.example.com', type: 'permanent', domains: ['b.com'] },
+        ],
+        settings: { preservePath: true, preserveQuery: true },
+      };
+
+      const result = validateConfig(config);
+      expect(result.valid).toBe(true);
+    });
+
+    it('should reject groups sharing a target with conflicting type', () => {
+      const config: RedirectConfig = {
+        redirects: [
+          { target: 'https://www.example.com', type: 'permanent', domains: ['a.com'] },
+          { target: 'https://www.example.com', type: 'temporary', domains: ['b.com'] },
+        ],
+        settings: { preservePath: true, preserveQuery: true },
+      };
+
+      const result = validateConfig(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e =>
+        e.path === 'redirects[1]' && e.message.includes('conflict')
+      )).toBe(true);
+    });
+
+    it('should reject groups sharing a target with conflicting preserve settings', () => {
+      const config: RedirectConfig = {
+        redirects: [
+          { target: 'https://www.example.com', type: 'permanent', domains: ['a.com'] },
+          { target: 'https://www.example.com', type: 'permanent', preservePath: false, domains: ['b.com'] },
+        ],
+        settings: { preservePath: true, preserveQuery: true },
+      };
+
+      const result = validateConfig(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.message.includes('conflict'))).toBe(true);
+    });
+
+    it('should ignore inactive groups when checking target consistency', () => {
+      const config: RedirectConfig = {
+        redirects: [
+          { target: 'https://www.example.com', type: 'permanent', domains: ['a.com'] },
+          { target: 'https://www.example.com', type: 'temporary', active: false, domains: ['b.com'] },
+        ],
+        settings: { preservePath: true, preserveQuery: true },
+      };
+
+      const result = validateConfig(config);
+      expect(result.valid).toBe(true);
+    });
+  });
 });

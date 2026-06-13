@@ -29,3 +29,8 @@ coverage/
 
 # Logs
 *.log
+
+# Local environment config (keep .env.example tracked)
+.env
+.env.*
+!.env.example

@@ -193,40 +193,53 @@ domains:
 
 ### Prerequisites
 
-- AWS CLI configured with appropriate credentials
+- AWS CLI configured with credentials for your account
 - Node.js 20+
 - AWS CDK CLI (`npm install -g aws-cdk`)
-- GitHub repository with CodeStar Connection
-- **Source domains must have hosted zones in Route 53**
+- **Source domains must have hosted zones in Route 53** (in the same account)
 
-### Initial Deployment
+### Fork and deploy
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/jonathanspiva/redirector.git
+# 1. Fork this repo on GitHub, then clone your fork
+git clone https://github.com/<your-username>/redirector.git
 cd redirector/cdk
 
 # 2. Install dependencies
 npm install
 
-# 3. Set environment variables
-export CDK_DEFAULT_ACCOUNT=<your-aws-account-id>
-export CDK_DEFAULT_REGION=us-east-1
-export GITHUB_CONNECTION_ARN=<your-codestar-connection-arn>
-export GITHUB_OWNER=<your-github-username>
-export GITHUB_REPO=<your-repo-name>
+# 3. Configure your account (region is always us-east-1)
+cp .env.example .env
+# Edit .env: set CDK_DEFAULT_ACCOUNT (required).
+# Leave the GITHUB_* values blank for now if you just want to deploy by hand.
 
-# 4. Bootstrap CDK (first time only)
+# 4. Add your domains
+cp ../redirects.example.yaml ../redirects.yaml
+# Edit ../redirects.yaml with your domains and targets.
+
+# 5. Bootstrap CDK in the account (first time only)
 npx cdk bootstrap
-
-# 5. Deploy the pipeline
-npx cdk deploy PipelineStack
 
 # 6. Deploy the redirects
 npx cdk deploy RedirectStack
 ```
 
-After initial setup, changes to `redirects.yaml` deploy automatically when pushed to `main`.
+That's it for a manual setup: re-run `npx cdk deploy RedirectStack` whenever
+you edit `redirects.yaml`.
+
+### Optional: automatic deploys on push
+
+To have a CodePipeline redeploy automatically every time you push to `main`:
+
+1. In the AWS Console, create a GitHub connection
+   (**Developer Tools → Settings → Connections → Create connection → GitHub**)
+   and authorize it for your fork.
+2. Put the connection ARN and your repo details in `.env`
+   (`GITHUB_CONNECTION_ARN`, `GITHUB_OWNER`, `GITHUB_REPO`).
+3. Deploy the pipeline: `npx cdk deploy PipelineStack`.
+
+The pipeline stack is only created when all three `GITHUB_*` values are set.
+After that, edits to `redirects.yaml` on `main` deploy automatically.
 
 ### Using as a Submodule (Private Config)
 
@@ -269,12 +282,14 @@ my-redirects/           # Your private repo
 redirector/
 ├── README.md                   # This file
 ├── LICENSE                     # MIT License
-├── redirects.yaml              # Redirect configuration (edit this)
-├── buildspec.yml               # CodeBuild: validate, deploy, test
+├── redirects.example.yaml      # Copy to redirects.yaml and edit
+├── redirects.yaml              # Your config (commit it, or keep private via submodule)
+├── buildspec.yml               # CodeBuild: deploy + smoke test
 └── cdk/
     ├── package.json
+    ├── .env.example            # Copy to .env and set your account/GitHub values
     ├── bin/
-    │   └── app.ts              # CDK app entry point
+    │   └── app.ts              # CDK app entry point (loads .env)
     ├── lib/
     │   ├── redirect-stack.ts   # Per-domain distributions
     │   ├── pipeline-stack.ts   # CI/CD infrastructure
@@ -283,6 +298,7 @@ redirector/
     │       ├── parser.ts       # YAML parsing
     │       └── validator.ts    # Pre-deployment validation
     ├── scripts/
+    │   ├── preflight-check.ts  # Pre-deploy Route 53 conflict checks
     │   └── smoke-test.ts       # Post-deployment verification
     └── test/                   # Jest test suites
 ```
