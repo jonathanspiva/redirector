@@ -48,11 +48,11 @@ export class PipelineStack extends cdk.Stack {
     // Create KMS key for artifact encryption with auto-rotation
     const artifactKey = new kms.Key(this, 'ArtifactKey', {
       description: 'KMS key for pipeline artifact encryption',
-      enableKeyRotation: true, // CIS/Well-Architected requirement
+      enableKeyRotation: true,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
-    // Create secure artifact bucket (AWS Well-Architected & CIS compliant)
+    // Artifact bucket: encrypted, versioned, private, TLS-only
     const artifactBucket = new s3.Bucket(this, 'ArtifactBucket', {
       encryption: s3.BucketEncryption.KMS,
       encryptionKey: artifactKey,
@@ -146,8 +146,8 @@ export class PipelineStack extends cdk.Stack {
   /**
    * Grant the CodeBuild project permissions needed for CDK deployment.
    *
-   * Permissions are scoped to specific resource patterns following
-   * AWS Well-Architected and CIS benchmark least-privilege requirements.
+   * Permissions are scoped to the CDK bootstrap roles and the read-only
+   * calls the preflight script makes.
    */
   private grantCdkDeployPermissions(
     project: codebuild.PipelineProject,
@@ -200,8 +200,7 @@ export class PipelineStack extends cdk.Stack {
   /**
    * Add cdk-nag suppressions for acceptable security findings.
    *
-   * Each suppression includes documented justification following
-   * AWS Well-Architected review practices.
+   * Each acknowledgment records why the finding doesn't apply.
    */
   private addNagSuppressions(
     buildProject: codebuild.PipelineProject,

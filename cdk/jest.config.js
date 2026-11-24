@@ -11,5 +11,7 @@ module.exports = {
     '!lib/**/*.d.ts'
   ],
   coverageDirectory: 'coverage',
-  verbose: true
+  verbose: true,
+  // Recycle workers that grow past 1 GB (aws-cdk-lib type-checking is memory-heavy)
+  workerIdleMemoryLimit: '1GB',
 };

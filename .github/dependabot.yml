@@ -16,6 +16,13 @@ updates:
       interval: monthly
     commit-message:
       prefix: "deps"
+    ignore:
+      # TypeScript 7 (native port) doesn't work with ts-node/ts-jest yet
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      # @types/node tracks the Node runtime (engines >=24, CodeBuild nodejs 24)
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       # Minor and patch updates land as one PR; majors get their own
       npm-minor:

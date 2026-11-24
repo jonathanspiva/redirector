@@ -2,27 +2,22 @@
 
 [![CI](https://github.com/jonathanspiva/redirector/actions/workflows/ci.yml/badge.svg)](https://github.com/jonathanspiva/redirector/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
-[![AWS CDK](https://img.shields.io/badge/AWS%20CDK-2.278+-orange.svg)](https://aws.amazon.com/cdk/)
-[![Node.js](https://img.shields.io/badge/Node.js-24+-green.svg)](https://nodejs.org/)
-[![Security: cdk-nag](https://img.shields.io/badge/Security-cdk--nag-blueviolet.svg)](https://github.com/cdklabs/cdk-nag)
-[![AWS Well-Architected](https://img.shields.io/badge/AWS-Well--Architected-FF9900.svg)](https://aws.amazon.com/architecture/well-architected/)
 
 **Manage HTTP redirects for multiple domains with a simple YAML file.**
 
-An AWS-native service that provisions CloudFront distributions and CloudFront Functions to handle domain redirects at the edge. Configuration-driven, fully automated, and built with security best practices.
+An AWS-native service that provisions CloudFront distributions and CloudFront Functions to handle domain redirects at the edge. Configuration-driven, with an optional pipeline that deploys on every push.
 
 ---
 
 ## Features
 
 - **YAML-based configuration** - Add domains by editing a simple config file
-- **Automatic deployment** - Push to `main` and resources are provisioned via CodePipeline
+- **Optional automatic deployment** - Add the included CodePipeline and every push to `main` deploys
 - **Edge-based redirects** - Sub-millisecond response times using CloudFront Functions
 - **Wildcard support** - Redirect `*.example.com` to catch all subdomains
 - **Path & query preservation** - `old.com/page?ref=x` redirects to `new.com/page?ref=x`
 - **One distribution per domain** - Isolated, predictable, no certificate juggling
-- **Security hardened** - cdk-nag validated, IAM least privilege, encrypted artifacts
+- **Security checks** - cdk-nag runs on every synth; scoped IAM; encrypted pipeline artifacts
 
 ---
 
@@ -45,6 +40,9 @@ An AWS-native service that provisions CloudFront distributions and CloudFront Fu
 ## Quick Start
 
 ### For Non-Developers (Editing Redirects)
+
+Once someone has completed the [Setup Guide](#setup-guide) and enabled the
+[optional pipeline](#optional-automatic-deploys-on-push):
 
 1. Open `redirects.yaml` in GitHub
 2. Add your domain under the appropriate target
@@ -214,7 +212,6 @@ lives in its parent's zone, set `hostedZone` on the group:
 
 - AWS CLI configured with credentials for your account
 - Node.js 24+
-- AWS CDK CLI (`npm install -g aws-cdk`)
 - **Source domains must have hosted zones in Route 53** (in the same account)
 
 ### Fork and deploy
@@ -224,8 +221,8 @@ lives in its parent's zone, set `hostedZone` on the group:
 git clone https://github.com/<your-username>/redirector.git
 cd redirector/cdk
 
-# 2. Install dependencies
-npm install
+# 2. Install dependencies (the CDK CLI is included; use it via npx)
+npm ci
 
 # 3. Configure your account (region is always us-east-1)
 cp .env.example .env
@@ -340,7 +337,7 @@ redirector/
 
 ## Security
 
-This project follows AWS security best practices and is validated against industry frameworks.
+Synthesized templates are checked with cdk-nag `AwsSolutionsChecks` on every synth and in the test suite. Findings that don't apply are acknowledged in code with a reason.
 
 ### Security Features
 
@@ -353,11 +350,6 @@ This project follows AWS security best practices and is validated against indust
 | **S3 Security** | Public access blocked, versioning enabled, SSL enforced |
 | **Dependency Scanning** | npm audit in CI, Dependabot for automated updates |
 | **Vulnerability Reports** | See [SECURITY.md](SECURITY.md) |
-
-### Compliance Alignment
-
-- **[AWS Well-Architected Framework](https://aws.amazon.com/architecture/well-architected/)** - Security Pillar
-- **[CIS AWS Foundations Benchmark](https://www.cisecurity.org/benchmark/amazon_web_services)** - IAM and S3 controls
 
 ### Security Architecture
 
@@ -403,12 +395,12 @@ CloudFront pricing is usage-based, not per-distribution:
 | Medium | 1M | ~$3/month |
 | High | 10M | ~$12/month |
 
-**Breakdown:**
+**Breakdown** (us-east-1 list prices as of November 2026; check [AWS pricing](https://aws.amazon.com/pricing/) for current rates):
 - HTTPS requests: $0.01 per 10,000
 - CloudFront Function: $0.10 per 1M invocations
-- ACM Certificates: Free
-- CodePipeline: $1/month
-- Route 53: Included in hosted zone cost
+- ACM certificates: free
+- Route 53: $0.50 per hosted zone per month (you likely pay this already); alias queries to CloudFront are free
+- Optional pipeline: CodePipeline about $1/month, KMS key for artifacts $1/month, CodeBuild per build minute
 
 ### Service Limits
 

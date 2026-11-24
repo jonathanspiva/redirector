@@ -8,7 +8,6 @@ No active items.
 
 - [ ] Try `cdk deploy --express` (CloudFormation Express mode, announced 2026-06-30): returns once config is applied instead of waiting for CloudFront propagation. Rollback is off by default, so pair it with smoke tests or `disableRollback=false`.
 - [ ] Consider consolidating per-domain distributions/certs (100 aliases per distribution; ACM certs up to 100 names on request). Fewer resources, but a shared cert is reissued on every domain change and cost savings are near zero.
-- [ ] If the CodeStar connection is ever recreated, its ARN uses the `codeconnections` prefix; grant `codeconnections:UseConnection` too.
 
 ### Handle DNS conflicts gracefully (Future Enhancement)
 

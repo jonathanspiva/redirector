@@ -34,5 +34,8 @@ jobs:
         run: npm run validate -- ../redirects.example.yaml
       - name: Test
         run: npm test
+        env:
+          # aws-cdk-lib is large; parallel ts-jest workers can exhaust the default heap
+          NODE_OPTIONS: --max-old-space-size=4096
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
