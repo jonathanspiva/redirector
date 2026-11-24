@@ -301,7 +301,7 @@ describe('generateFunctionCode', () => {
     });
 
     expect(code).toContain('function handler(event)');
-    expect(code).toContain("target: 'https://www.example.com'");
+    expect(code).toContain('target: "https://www.example.com"');
     expect(code).toContain('statusCode: 301');
     expect(code).toContain('preservePath: true');
     expect(code).toContain('preserveQuery: true');
@@ -328,7 +328,7 @@ describe('generateFunctionCode', () => {
       preserveQuery: true,
     });
 
-    expect(code).toContain("target: 'https://example.com/subpath/deep'");
+    expect(code).toContain('target: "https://example.com/subpath/deep"');
   });
 
   it('should handle special characters in target URL', () => {
@@ -518,7 +518,7 @@ describe('RedirectStack with subdomains', () => {
     try {
       const app = new cdk.App({
         context: {
-          // Zone lookup will try subdomain first, then parent
+          // Without hostedZone, a subdomain is looked up as its own zone
           'hosted-zone:account=123456789012:domainName=blog.old-brand.com:region=us-east-1': {
             Id: '/hostedzone/ZSUB',
             Name: 'blog.old-brand.com.',
@@ -539,5 +539,80 @@ describe('RedirectStack with subdomains', () => {
     } finally {
       fs.unlinkSync(subdomainConfigPath);
     }
+  });
+
+  it('should look up the parent zone when hostedZone is set', () => {
+    const configPath = path.join(__dirname, 'test-subdomain-parent-zone.yaml');
+    fs.writeFileSync(configPath, yaml.stringify({
+      redirects: [
+        {
+          target: 'https://www.example.com',
+          type: 'permanent',
+          hostedZone: 'old-brand.com',
+          domains: ['blog.old-brand.com', 'shop.old-brand.com'],
+        },
+      ],
+    }));
+
+    try {
+      const app = new cdk.App({
+        context: {
+          'hosted-zone:account=123456789012:domainName=old-brand.com:region=us-east-1': {
+            Id: '/hostedzone/ZPARENT',
+            Name: 'old-brand.com.',
+          },
+        },
+      });
+      const stack = new RedirectStack(app, 'ParentZoneStack', {
+        configPath,
+        env: { account: '123456789012', region: 'us-east-1' },
+      });
+      const template = Template.fromStack(stack);
+
+      template.resourceCountIs('AWS::CloudFront::Distribution', 2);
+      template.hasResourceProperties('AWS::Route53::RecordSet', {
+        Name: 'blog.old-brand.com.',
+        HostedZoneId: 'ZPARENT',
+      });
+      template.hasResourceProperties('AWS::Route53::RecordSet', {
+        Name: 'shop.old-brand.com.',
+        HostedZoneId: 'ZPARENT',
+      });
+    } finally {
+      fs.unlinkSync(configPath);
+    }
+  });
+});
+
+describe('generated CloudFront Function handler', () => {
+  type Handler = (event: unknown) => { statusCode: number; headers: { location: { value: string } } };
+
+  const loadHandler = (target: string, preservePath = true, preserveQuery = true): Handler =>
+    new Function(`${generateFunctionCode({ target, statusCode: 301, preservePath, preserveQuery })}\nreturn handler;`)() as Handler;
+
+  const event = (uri: string, querystring: Record<string, unknown> = {}) => ({ request: { uri, querystring } });
+
+  it('redirects with path and query preserved', () => {
+    const result = loadHandler('https://www.example.com')(event('/a/b', { x: { value: '1' } }));
+    expect(result.statusCode).toBe(301);
+    expect(result.headers.location.value).toBe('https://www.example.com/a/b?x=1');
+  });
+
+  it('keeps every value of a repeated query key', () => {
+    const result = loadHandler('https://www.example.com')(
+      event('/', { a: { value: '1', multiValue: [{ value: '1' }, { value: '2' }] } }),
+    );
+    expect(result.headers.location.value).toBe('https://www.example.com/?a=1&a=2');
+  });
+
+  it('drops path and query when preservation is off', () => {
+    const result = loadHandler('https://www.example.com/landing', false, false)(event('/a', { x: { value: '1' } }));
+    expect(result.headers.location.value).toBe('https://www.example.com/landing');
+  });
+
+  it('treats quotes and replacement patterns in the target as data', () => {
+    const target = "https://www.example.com/it's/$&";
+    const result = loadHandler(target, false, false)(event('/'));
+    expect(result.headers.location.value).toBe(target);
   });
 });

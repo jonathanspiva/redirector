@@ -134,27 +134,41 @@ async function checkCloudFrontConflict(domain: string): Promise<CloudFrontConfli
 }
 
 /**
- * Find the hosted zone for a domain.
- * Walks up the domain hierarchy to find a matching zone.
+ * Find a public hosted zone by exact name.
  */
-async function findHostedZone(domain: string): Promise<HostedZone | null> {
+async function findZoneByName(zoneName: string): Promise<HostedZone | null> {
   const zones = await getHostedZones();
-  const hierarchy = getDomainHierarchy(domain);
+  const zoneNameWithDot = zoneName.toLowerCase() + '.';
+  return zones.find((z) => z.Name === zoneNameWithDot && !z.Config?.PrivateZone) ?? null;
+}
 
-  // Try each level of the domain hierarchy
-  for (const zoneName of hierarchy) {
-    // Route53 zone names have trailing dot
-    const zoneNameWithDot = zoneName + '.';
-
-    const zone = zones.find(
-      (z) => z.Name === zoneNameWithDot && !z.Config?.PrivateZone
-    );
-    if (zone) {
-      return zone;
-    }
+/**
+ * Find the hosted zone the stack will use for a domain (its configured
+ * `hostedZone`, or the domain itself). If that zone doesn't exist but a parent
+ * zone does, return the parent's name so the error can suggest `hostedZone:`.
+ */
+async function findHostedZone(
+  domain: string,
+  zoneName: string
+): Promise<{ zone: HostedZone | null; parentZoneName?: string }> {
+  const zone = await findZoneByName(zoneName);
+  if (zone) {
+    return { zone };
   }
 
-  return null;
+  for (const candidate of getDomainHierarchy(domain).slice(1)) {
+    if (await findZoneByName(candidate)) {
+      return { zone: null, parentZoneName: candidate };
+    }
+  }
+  return { zone: null };
+}
+
+/**
+ * Route 53 returns `*` in record names as the octal escape `\052`.
+ */
+export function normalizeRecordName(name: string): string {
+  return name.replace(/^\\052/, '*').toLowerCase();
 }
 
 /**
@@ -164,12 +178,12 @@ async function checkExistingRecords(
   domain: string,
   hostedZoneId: string
 ): Promise<{ hasA: boolean; hasAAAA: boolean; isAlias: boolean }> {
-  const recordName = domain.endsWith('.') ? domain : domain + '.';
+  const recordName = (domain.endsWith('.') ? domain : domain + '.').toLowerCase();
 
   const response = await route53.send(
     new ListResourceRecordSetsCommand({
       HostedZoneId: hostedZoneId,
-      StartRecordName: recordName,
+      StartRecordName: recordName.replace(/^\*/, '\\052'),
       StartRecordType: 'A',
       MaxItems: 10,
     })
@@ -181,7 +195,7 @@ async function checkExistingRecords(
 
   for (const record of response.ResourceRecordSets || []) {
     // Only check exact matches
-    if (record.Name !== recordName) continue;
+    if (normalizeRecordName(record.Name ?? '') !== recordName) continue;
 
     if (record.Type === 'A') {
       hasA = true;
@@ -199,7 +213,7 @@ async function checkExistingRecords(
 /**
  * Run pre-flight check for a single domain.
  */
-async function checkDomain(domain: string): Promise<PreflightResult> {
+async function checkDomain(domain: string, hostedZone: string): Promise<PreflightResult> {
   try {
     // Check for CloudFront CNAME conflict FIRST (most common issue)
     const cfConflict = await checkCloudFrontConflict(domain);
@@ -214,13 +228,15 @@ async function checkDomain(domain: string): Promise<PreflightResult> {
     }
 
     // Check for hosted zone
-    const zone = await findHostedZone(domain);
+    const { zone, parentZoneName } = await findHostedZone(domain, hostedZone);
     if (!zone || !zone.Id) {
       return {
         domain,
         status: 'error',
-        message: 'No hosted zone found',
-        details: `Create a Route 53 hosted zone for ${domain} or a parent domain`,
+        message: `No hosted zone named ${hostedZone}`,
+        details: parentZoneName
+          ? `This domain is in the ${parentZoneName} zone. Add \`hostedZone: ${parentZoneName}\` to its redirect group.`
+          : `Create a public Route 53 hosted zone for ${hostedZone}`,
       };
     }
 
@@ -297,7 +313,7 @@ async function runPreflightChecks(configPath?: string): Promise<void> {
 
   // Run checks in parallel
   const results = await Promise.all(
-    domainConfigs.map((dc) => checkDomain(dc.domain))
+    domainConfigs.map((dc) => checkDomain(dc.domain, dc.hostedZone))
   );
 
   // Display results

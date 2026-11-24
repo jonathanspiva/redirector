@@ -1,5 +1,7 @@
 import { RedirectConfig, RedirectGroup, ValidationError, ValidationResult } from './types';
 import { loadConfig } from './parser';
+import { domainLogicalId, stripWildcard } from '../utils/domain';
+import { sanitizeFunctionName } from '../constructs/redirect-function';
 
 /**
  * Validate that an optional field is a boolean if present.
@@ -43,6 +45,12 @@ function isValidTargetUrl(url: string): { valid: boolean; reason?: string } {
 
     if (url.endsWith('/') && parsed.pathname === '/') {
       return { valid: false, reason: 'should not have trailing slash' };
+    }
+
+    // The request path and query are appended to the target, so it can't
+    // carry its own query string or fragment.
+    if (parsed.search || parsed.hash || url.includes('?') || url.includes('#')) {
+      return { valid: false, reason: 'must not include a query string or fragment' };
     }
 
     return { valid: true };
@@ -109,17 +117,35 @@ function validateRedirectGroup(
         return;
       }
 
-      // Check for duplicates
-      const existingPath = seenDomains.get(domain);
+      // Check for duplicates (DNS names are case-insensitive)
+      const key = domain.toLowerCase();
+      const existingPath = seenDomains.get(key);
       if (existingPath) {
         errors.push({
           path: domainPath,
           message: `duplicate domain "${domain}" (also in ${existingPath})`,
         });
       } else {
-        seenDomains.set(domain, basePath);
+        seenDomains.set(key, basePath);
       }
     });
+  }
+
+  // Validate hostedZone: every domain must be the zone itself or inside it
+  if (group.hostedZone !== undefined) {
+    const zonePath = `${basePath}.hostedZone`;
+    if (typeof group.hostedZone !== 'string' || group.hostedZone.startsWith('*.') || !isValidDomain(group.hostedZone)) {
+      errors.push({ path: zonePath, message: `invalid hosted zone "${String(group.hostedZone)}"` });
+    } else if (Array.isArray(group.domains)) {
+      const zone = group.hostedZone.toLowerCase();
+      for (const domain of group.domains) {
+        if (typeof domain !== 'string') continue;
+        const base = stripWildcard(domain).toLowerCase();
+        if (base !== zone && !base.endsWith(`.${zone}`)) {
+          errors.push({ path: zonePath, message: `"${domain}" is not in hosted zone "${group.hostedZone}"` });
+        }
+      }
+    }
   }
 
   // Validate optional boolean fields
@@ -197,6 +223,51 @@ function validateTargetConsistency(config: RedirectConfig): ValidationError[] {
 }
 
 /**
+ * Reject domains or targets whose generated resource names collide
+ * (for example `a-b.com` and `ab.com`), which would otherwise fail
+ * synthesis with a duplicate construct error.
+ */
+function validateNameCollisions(config: RedirectConfig): ValidationError[] {
+  const errors: ValidationError[] = [];
+  const domainIds = new Map<string, string>();
+  const functionNames = new Map<string, string>();
+
+  config.redirects.forEach((group, index) => {
+    if (group.active === false) return;
+
+    if (typeof group.target === 'string' && group.target !== '') {
+      const name = sanitizeFunctionName(group.target);
+      const existing = functionNames.get(name);
+      if (existing !== undefined && existing !== group.target) {
+        errors.push({
+          path: `redirects[${index}].target`,
+          message: `"${group.target}" and "${existing}" produce the same function name "${name}"`,
+        });
+      } else {
+        functionNames.set(name, group.target);
+      }
+    }
+
+    if (!Array.isArray(group.domains)) return;
+    group.domains.forEach((domain, domainIndex) => {
+      if (typeof domain !== 'string') return;
+      const id = domainLogicalId(domain);
+      const existing = domainIds.get(id);
+      if (existing !== undefined && existing.toLowerCase() !== domain.toLowerCase()) {
+        errors.push({
+          path: `redirects[${index}].domains[${domainIndex}]`,
+          message: `"${domain}" and "${existing}" produce the same resource ID "${id}"`,
+        });
+      } else {
+        domainIds.set(id, domain);
+      }
+    });
+  });
+
+  return errors;
+}
+
+/**
  * Validate the entire redirect configuration.
  *
  * @param config - The configuration to validate
@@ -222,6 +293,7 @@ export function validateConfig(config: RedirectConfig): ValidationResult {
     // point at the same target with different type/preserve* settings, one
     // group's intent would be silently dropped, so reject it here.
     errors.push(...validateTargetConsistency(config));
+    errors.push(...validateNameCollisions(config));
   }
 
   // Validate settings

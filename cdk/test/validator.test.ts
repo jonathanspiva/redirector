@@ -709,4 +709,83 @@ describe('additional branch coverage', () => {
       expect(result.valid).toBe(true);
     });
   });
+
+  describe('hostedZone', () => {
+    const withZone = (hostedZone: unknown, domains: string[]): RedirectConfig => ({
+      redirects: [{ target: 'https://www.example.com', type: 'permanent', domains, hostedZone: hostedZone as string }],
+      settings: { preservePath: true, preserveQuery: true },
+    });
+
+    it('accepts domains inside the zone, including the apex and wildcards', () => {
+      const result = validateConfig(withZone('example.net', ['example.net', 'blog.example.net', '*.shop.example.net']));
+      expect(result.valid).toBe(true);
+    });
+
+    it('rejects a domain outside the zone', () => {
+      const result = validateConfig(withZone('example.net', ['blog.example.org']));
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('not in hosted zone');
+    });
+
+    it('does not treat a suffix match as inside the zone', () => {
+      const result = validateConfig(withZone('example.net', ['badexample.net']));
+      expect(result.valid).toBe(false);
+    });
+
+    it('rejects an invalid or wildcard zone name', () => {
+      expect(validateConfig(withZone('*.example.net', ['a.example.net'])).valid).toBe(false);
+      expect(validateConfig(withZone(42, ['a.example.net'])).valid).toBe(false);
+    });
+  });
+
+  describe('target restrictions', () => {
+    const withTarget = (target: string): RedirectConfig => ({
+      redirects: [{ target, type: 'permanent', domains: ['old-example.com'] }],
+      settings: { preservePath: true, preserveQuery: true },
+    });
+
+    it('rejects a target with a query string', () => {
+      expect(validateConfig(withTarget('https://www.example.com/page?ref=old')).valid).toBe(false);
+    });
+
+    it('rejects a target with a fragment', () => {
+      expect(validateConfig(withTarget('https://www.example.com/page#top')).valid).toBe(false);
+    });
+  });
+
+  it('treats domains that differ only in case as duplicates', () => {
+    const config: RedirectConfig = {
+      redirects: [
+        { target: 'https://a.example.com', type: 'permanent', domains: ['Old-Example.com'] },
+        { target: 'https://b.example.com', type: 'permanent', domains: ['old-example.com'] },
+      ],
+      settings: { preservePath: true, preserveQuery: true },
+    };
+    const result = validateConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toContain('duplicate domain');
+  });
+
+  it('rejects domains whose resource IDs collide', () => {
+    const config: RedirectConfig = {
+      redirects: [{ target: 'https://www.example.com', type: 'permanent', domains: ['a-b.com', 'ab.com'] }],
+      settings: { preservePath: true, preserveQuery: true },
+    };
+    const result = validateConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.message.includes('same resource ID'))).toBe(true);
+  });
+
+  it('rejects targets whose function names collide', () => {
+    const config: RedirectConfig = {
+      redirects: [
+        { target: 'https://a.com/x', type: 'permanent', domains: ['one.com'] },
+        { target: 'https://a.com-x', type: 'permanent', domains: ['two.com'] },
+      ],
+      settings: { preservePath: true, preserveQuery: true },
+    };
+    const result = validateConfig(config);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.message.includes('same function name'))).toBe(true);
+  });
 });

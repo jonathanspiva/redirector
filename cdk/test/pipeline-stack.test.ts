@@ -107,115 +107,46 @@ describe('PipelineStack', () => {
   });
 
   describe('IAM Permissions', () => {
-    it('should grant CDK role assumption permissions', () => {
+    const allActions = (): string[] =>
+      Object.values(template.findResources('AWS::IAM::Policy')).flatMap((policy) =>
+        (policy as { Properties: { PolicyDocument: { Statement: Array<{ Action: string | string[] }> } } })
+          .Properties.PolicyDocument.Statement.flatMap((st) => (Array.isArray(st.Action) ? st.Action : [st.Action])),
+      );
+
+    it('should only allow assuming the CDK bootstrap deploy, publishing and lookup roles', () => {
       template.hasResourceProperties('AWS::IAM::Policy', {
         PolicyDocument: {
           Statement: Match.arrayWith([
             Match.objectLike({
+              Sid: 'CdkBootstrapRoleAssumption',
               Action: 'sts:AssumeRole',
-              Effect: 'Allow',
-              Resource: Match.stringLikeRegexp('arn:aws:iam::.*:role/cdk-\\*'),
+              Resource: [
+                'arn:aws:iam::123456789012:role/cdk-*-deploy-role-123456789012-*',
+                'arn:aws:iam::123456789012:role/cdk-*-file-publishing-role-123456789012-*',
+                'arn:aws:iam::123456789012:role/cdk-*-lookup-role-123456789012-*',
+              ],
             }),
           ]),
         },
       });
     });
 
-    it('should grant CloudFormation permissions', () => {
-      template.hasResourceProperties('AWS::IAM::Policy', {
-        PolicyDocument: {
-          Statement: Match.arrayWith([
-            Match.objectLike({
-              Action: Match.arrayWith([
-                'cloudformation:DescribeStacks',
-                'cloudformation:CreateChangeSet',
-              ]),
-              Effect: 'Allow',
-            }),
-          ]),
-        },
-      });
+    it('should grant the read-only calls preflight needs', () => {
+      const actions = allActions();
+      expect(actions).toEqual(expect.arrayContaining([
+        'route53:ListHostedZones',
+        'route53:ListResourceRecordSets',
+        'cloudfront:ListDistributions',
+      ]));
     });
 
-    it('should grant Route 53 list permissions', () => {
-      template.hasResourceProperties('AWS::IAM::Policy', {
-        PolicyDocument: {
-          Statement: Match.arrayWith([
-            Match.objectLike({
-              Action: Match.arrayWith([
-                'route53:ListHostedZones',
-              ]),
-              Effect: 'Allow',
-            }),
-          ]),
-        },
-      });
+    it('should not grant direct write access to deployed services', () => {
+      const writes = allActions().filter((action) =>
+        /^(cloudformation|acm):|^route53:ChangeResourceRecordSets$|^cloudfront:(Create|Update|Delete|Publish)|^ssm:/.test(action),
+      );
+      expect(writes).toEqual([]);
     });
 
-    it('should grant Route 53 record management permissions', () => {
-      template.hasResourceProperties('AWS::IAM::Policy', {
-        PolicyDocument: {
-          Statement: Match.arrayWith([
-            Match.objectLike({
-              Action: Match.arrayWith([
-                'route53:ChangeResourceRecordSets',
-              ]),
-              Effect: 'Allow',
-              Resource: 'arn:aws:route53:::hostedzone/*',
-            }),
-          ]),
-        },
-      });
-    });
-
-    it('should grant ACM permissions scoped to us-east-1', () => {
-      template.hasResourceProperties('AWS::IAM::Policy', {
-        PolicyDocument: {
-          Statement: Match.arrayWith([
-            Match.objectLike({
-              Action: Match.arrayWith([
-                'acm:RequestCertificate',
-                'acm:DescribeCertificate',
-              ]),
-              Effect: 'Allow',
-              Resource: Match.stringLikeRegexp('arn:aws:acm:us-east-1:.*:certificate/\\*'),
-            }),
-          ]),
-        },
-      });
-    });
-
-    it('should grant CloudFront distribution permissions scoped to account', () => {
-      template.hasResourceProperties('AWS::IAM::Policy', {
-        PolicyDocument: {
-          Statement: Match.arrayWith([
-            Match.objectLike({
-              Action: Match.arrayWith([
-                'cloudfront:CreateDistribution',
-              ]),
-              Effect: 'Allow',
-              Resource: Match.stringLikeRegexp('arn:aws:cloudfront::.*:distribution/\\*'),
-            }),
-          ]),
-        },
-      });
-    });
-
-    it('should grant CloudFront function permissions scoped to account', () => {
-      template.hasResourceProperties('AWS::IAM::Policy', {
-        PolicyDocument: {
-          Statement: Match.arrayWith([
-            Match.objectLike({
-              Action: Match.arrayWith([
-                'cloudfront:CreateFunction',
-              ]),
-              Effect: 'Allow',
-              Resource: Match.stringLikeRegexp('arn:aws:cloudfront::.*:function/\\*'),
-            }),
-          ]),
-        },
-      });
-    });
 
     it('should scope CodeStar connection to specific ARN', () => {
       template.hasResourceProperties('AWS::IAM::Policy', {

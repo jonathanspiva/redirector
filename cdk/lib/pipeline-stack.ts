@@ -154,88 +154,34 @@ export class PipelineStack extends cdk.Stack {
     connectionArn: string
   ): void {
     // Define all IAM permissions in a data-driven format
+    // Deployment itself runs through the CDK bootstrap roles (deploy, asset
+    // publishing, lookup), so the build role only needs to assume them, plus
+    // the read-only calls made by the preflight script.
     const permissions: Array<{ sid: string; actions: string[]; resources: string[] }> = [
       {
-        sid: 'CdkRoleAssumption',
+        sid: 'CdkBootstrapRoleAssumption',
         actions: ['sts:AssumeRole'],
-        resources: [`arn:aws:iam::${this.account}:role/cdk-*`],
-      },
-      {
-        sid: 'CloudFormationStackManagement',
-        actions: [
-          'cloudformation:DescribeStacks', 'cloudformation:GetTemplate',
-          'cloudformation:CreateChangeSet', 'cloudformation:DescribeChangeSet',
-          'cloudformation:ExecuteChangeSet', 'cloudformation:DeleteChangeSet',
-          'cloudformation:DescribeStackEvents',
-        ],
         resources: [
-          `arn:aws:cloudformation:*:${this.account}:stack/RedirectStack/*`,
-          `arn:aws:cloudformation:*:${this.account}:stack/CDKToolkit/*`,
+          `arn:aws:iam::${this.account}:role/cdk-*-deploy-role-${this.account}-*`,
+          `arn:aws:iam::${this.account}:role/cdk-*-file-publishing-role-${this.account}-*`,
+          `arn:aws:iam::${this.account}:role/cdk-*-lookup-role-${this.account}-*`,
         ],
       },
       {
-        sid: 'CdkAssetsBucketAccess',
-        actions: ['s3:GetObject', 's3:PutObject', 's3:ListBucket', 's3:GetBucketLocation'],
-        resources: [
-          `arn:aws:s3:::cdk-*-assets-${this.account}-*`,
-          `arn:aws:s3:::cdk-*-assets-${this.account}-*/*`,
-        ],
+        sid: 'PreflightListOperations',
+        actions: ['route53:ListHostedZones', 'cloudfront:ListDistributions'],
+        resources: ['*'], // These List APIs don't support resource-level permissions
       },
       {
-        sid: 'CdkBootstrapParameters',
-        actions: ['ssm:GetParameter'],
-        resources: [`arn:aws:ssm:*:${this.account}:parameter/cdk-bootstrap/*`],
-      },
-      {
-        sid: 'Route53ListOperations',
-        actions: ['route53:ListHostedZones', 'route53:ListHostedZonesByName', 'route53:GetHostedZone'],
-        resources: ['*'], // Required by AWS API
-      },
-      {
-        sid: 'Route53RecordManagement',
-        actions: ['route53:ChangeResourceRecordSets', 'route53:ListResourceRecordSets'],
+        sid: 'PreflightRecordReads',
+        actions: ['route53:ListResourceRecordSets'],
         resources: ['arn:aws:route53:::hostedzone/*'],
       },
       {
-        sid: 'AcmCertificateManagement',
-        actions: [
-          'acm:RequestCertificate', 'acm:DescribeCertificate', 'acm:DeleteCertificate',
-          'acm:ListCertificates', 'acm:AddTagsToCertificate', 'acm:ListTagsForCertificate',
-        ],
-        resources: [`arn:aws:acm:us-east-1:${this.account}:certificate/*`],
-      },
-      {
-        sid: 'AcmListCertificates',
-        actions: ['acm:ListCertificates'],
-        resources: ['*'], // Required by AWS API
-      },
-      {
-        sid: 'CloudFrontDistributionManagement',
-        actions: [
-          'cloudfront:CreateDistribution', 'cloudfront:UpdateDistribution',
-          'cloudfront:DeleteDistribution', 'cloudfront:GetDistribution',
-          'cloudfront:GetDistributionConfig', 'cloudfront:TagResource',
-          'cloudfront:UntagResource', 'cloudfront:ListTagsForResource',
-        ],
-        resources: [`arn:aws:cloudfront::${this.account}:distribution/*`],
-      },
-      {
-        sid: 'CloudFrontFunctionManagement',
-        actions: [
-          'cloudfront:CreateFunction', 'cloudfront:UpdateFunction',
-          'cloudfront:DeleteFunction', 'cloudfront:DescribeFunction',
-          'cloudfront:PublishFunction', 'cloudfront:GetFunction',
-        ],
-        resources: [`arn:aws:cloudfront::${this.account}:function/*`],
-      },
-      {
-        sid: 'CloudFrontListOperations',
-        actions: ['cloudfront:ListDistributions', 'cloudfront:ListFunctions'],
-        resources: ['*'], // Required by AWS API
-      },
-      {
-        sid: 'CodeStarConnectionAccess',
-        actions: ['codestar-connections:UseConnection'],
+        sid: 'SourceConnectionAccess',
+        // The IAM prefix must match the connection ARN's service prefix;
+        // older connections use codestar-connections, newer ones codeconnections.
+        actions: ['codestar-connections:UseConnection', 'codeconnections:UseConnection'],
         resources: [connectionArn],
       },
     ];
@@ -272,10 +218,9 @@ export class PipelineStack extends cdk.Stack {
     // hashed logical IDs, so these are acknowledged per role rather than per finding.
     Validations.of(buildProject).acknowledge({
       id: 'AwsSolutions-IAM5',
-      reason: 'Build role wildcards are required for CDK deployment: route53/acm/cloudfront List* APIs need Resource::*; '
-        + 'cdk-* bootstrap roles; RedirectStack and CDKToolkit stack ARNs; cdk assets buckets; cdk-bootstrap SSM parameters; '
-        + 'account-scoped hosted zones, certificates, distributions and functions; and the CDK-generated CloudWatch Logs, '
-        + 'CodeBuild report group and KMS (ReEncrypt*, GenerateDataKey*) grants scoped to this project.',
+      reason: 'Build role wildcards: CDK bootstrap role names include a qualifier and region; route53:ListHostedZones and '
+        + 'cloudfront:ListDistributions need Resource::*; preflight reads records in any hosted zone; plus the CDK-generated '
+        + 'CloudWatch Logs, CodeBuild report group and KMS (ReEncrypt*, GenerateDataKey*) grants scoped to this project.',
     });
 
     Validations.of(pipeline).acknowledge({

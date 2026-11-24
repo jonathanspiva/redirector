@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'yaml';
 import { RedirectConfig, RedirectGroup, Settings, ResolvedDomainConfig } from './types';
+import { stripWildcard } from '../utils/domain';
 
 /**
  * Default settings used when not specified in configuration.
@@ -125,6 +126,7 @@ export function resolveDomainConfig(
     preservePath: group.preservePath ?? settings.preservePath,
     preserveQuery: group.preserveQuery ?? settings.preserveQuery,
     skipTest: group.skipTest?.includes(domain) ?? false,
+    hostedZone: group.hostedZone ?? stripWildcard(domain),
     description: group.description,
   };
 }

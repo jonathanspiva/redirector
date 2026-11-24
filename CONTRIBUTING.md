@@ -18,7 +18,7 @@ npm run validate -- ../redirects.example.yaml
 ## Guidelines
 
 - Add tests for any change. Behavior changes to the generated CloudFront Function
-  need a case in `redirect-function` tests; stack changes usually need a snapshot
+  need a case in the handler tests in `test/redirect-stack.test.ts`; stack changes usually need a snapshot
   update (`npx jest -u`) that you've read line by line.
 - Keep `cdk-nag` clean. Fix a finding where possible; otherwise acknowledge it with
   `Validations.of(construct).acknowledge(...)` and a specific reason.

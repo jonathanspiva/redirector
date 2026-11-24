@@ -345,126 +345,36 @@ exports[`PipelineStack Snapshots should match CloudFormation template snapshot 1
             {
               "Action": "sts:AssumeRole",
               "Effect": "Allow",
-              "Resource": "arn:aws:iam::123456789012:role/cdk-*",
-              "Sid": "CdkRoleAssumption",
-            },
-            {
-              "Action": [
-                "cloudformation:DescribeStacks",
-                "cloudformation:GetTemplate",
-                "cloudformation:CreateChangeSet",
-                "cloudformation:DescribeChangeSet",
-                "cloudformation:ExecuteChangeSet",
-                "cloudformation:DeleteChangeSet",
-                "cloudformation:DescribeStackEvents",
-              ],
-              "Effect": "Allow",
               "Resource": [
-                "arn:aws:cloudformation:*:123456789012:stack/RedirectStack/*",
-                "arn:aws:cloudformation:*:123456789012:stack/CDKToolkit/*",
+                "arn:aws:iam::123456789012:role/cdk-*-deploy-role-123456789012-*",
+                "arn:aws:iam::123456789012:role/cdk-*-file-publishing-role-123456789012-*",
+                "arn:aws:iam::123456789012:role/cdk-*-lookup-role-123456789012-*",
               ],
-              "Sid": "CloudFormationStackManagement",
-            },
-            {
-              "Action": [
-                "s3:GetObject",
-                "s3:PutObject",
-                "s3:ListBucket",
-                "s3:GetBucketLocation",
-              ],
-              "Effect": "Allow",
-              "Resource": [
-                "arn:aws:s3:::cdk-*-assets-123456789012-*",
-                "arn:aws:s3:::cdk-*-assets-123456789012-*/*",
-              ],
-              "Sid": "CdkAssetsBucketAccess",
-            },
-            {
-              "Action": "ssm:GetParameter",
-              "Effect": "Allow",
-              "Resource": "arn:aws:ssm:*:123456789012:parameter/cdk-bootstrap/*",
-              "Sid": "CdkBootstrapParameters",
+              "Sid": "CdkBootstrapRoleAssumption",
             },
             {
               "Action": [
                 "route53:ListHostedZones",
-                "route53:ListHostedZonesByName",
-                "route53:GetHostedZone",
+                "cloudfront:ListDistributions",
               ],
               "Effect": "Allow",
               "Resource": "*",
-              "Sid": "Route53ListOperations",
+              "Sid": "PreflightListOperations",
             },
             {
-              "Action": [
-                "route53:ChangeResourceRecordSets",
-                "route53:ListResourceRecordSets",
-              ],
+              "Action": "route53:ListResourceRecordSets",
               "Effect": "Allow",
               "Resource": "arn:aws:route53:::hostedzone/*",
-              "Sid": "Route53RecordManagement",
+              "Sid": "PreflightRecordReads",
             },
             {
               "Action": [
-                "acm:RequestCertificate",
-                "acm:DescribeCertificate",
-                "acm:DeleteCertificate",
-                "acm:ListCertificates",
-                "acm:AddTagsToCertificate",
-                "acm:ListTagsForCertificate",
+                "codestar-connections:UseConnection",
+                "codeconnections:UseConnection",
               ],
-              "Effect": "Allow",
-              "Resource": "arn:aws:acm:us-east-1:123456789012:certificate/*",
-              "Sid": "AcmCertificateManagement",
-            },
-            {
-              "Action": "acm:ListCertificates",
-              "Effect": "Allow",
-              "Resource": "*",
-              "Sid": "AcmListCertificates",
-            },
-            {
-              "Action": [
-                "cloudfront:CreateDistribution",
-                "cloudfront:UpdateDistribution",
-                "cloudfront:DeleteDistribution",
-                "cloudfront:GetDistribution",
-                "cloudfront:GetDistributionConfig",
-                "cloudfront:TagResource",
-                "cloudfront:UntagResource",
-                "cloudfront:ListTagsForResource",
-              ],
-              "Effect": "Allow",
-              "Resource": "arn:aws:cloudfront::123456789012:distribution/*",
-              "Sid": "CloudFrontDistributionManagement",
-            },
-            {
-              "Action": [
-                "cloudfront:CreateFunction",
-                "cloudfront:UpdateFunction",
-                "cloudfront:DeleteFunction",
-                "cloudfront:DescribeFunction",
-                "cloudfront:PublishFunction",
-                "cloudfront:GetFunction",
-              ],
-              "Effect": "Allow",
-              "Resource": "arn:aws:cloudfront::123456789012:function/*",
-              "Sid": "CloudFrontFunctionManagement",
-            },
-            {
-              "Action": [
-                "cloudfront:ListDistributions",
-                "cloudfront:ListFunctions",
-              ],
-              "Effect": "Allow",
-              "Resource": "*",
-              "Sid": "CloudFrontListOperations",
-            },
-            {
-              "Action": "codestar-connections:UseConnection",
               "Effect": "Allow",
               "Resource": "arn:aws:codestar-connections:us-east-1:123456789012:connection/test-connection-id",
-              "Sid": "CodeStarConnectionAccess",
+              "Sid": "SourceConnectionAccess",
             },
             {
               "Action": [
@@ -1285,7 +1195,7 @@ exports[`RedirectStack Snapshots should match CloudFormation template snapshot 1
  */
 
 var config = {
-  target: 'https://www.primary.com',
+  target: "https://www.primary.com",
   statusCode: 301,
   preservePath: true,
   preserveQuery: true
@@ -1357,7 +1267,7 @@ function handler(event) {
  */
 
 var config = {
-  target: 'https://www.secondary.com/landing',
+  target: "https://www.secondary.com/landing",
   statusCode: 302,
   preservePath: false,
   preserveQuery: false

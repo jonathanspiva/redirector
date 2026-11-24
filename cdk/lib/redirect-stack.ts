@@ -5,15 +5,18 @@ import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import { Construct } from 'constructs';
-import * as path from 'path';
 import { loadAndValidateConfig } from './config/validator';
 import { getAllDomainConfigs, getUniqueTargets } from './config/parser';
 import { ResolvedDomainConfig } from './config/types';
 import { RedirectFunction } from './constructs/redirect-function';
-import { domainLogicalId, getDomainHierarchy, sanitizeLogicalId } from './utils/domain';
+import { domainLogicalId, sanitizeLogicalId } from './utils/domain';
 
 export interface RedirectStackProps extends cdk.StackProps {
-  /** Optional path to the redirects.yaml configuration file */
+  /**
+   * Path to the redirects.yaml configuration file. When omitted, the config is
+   * resolved from REDIRECTS_CONFIG, then redirects.yaml in the working
+   * directory or up to two parent directories (see lib/config/parser.ts).
+   */
   configPath?: string;
 }
 
@@ -37,8 +40,7 @@ export class RedirectStack extends cdk.Stack {
     super(scope, id, props);
 
     // Load and validate configuration
-    const configPath = props?.configPath ?? path.join(__dirname, '..', '..', 'redirects.yaml');
-    const config = loadAndValidateConfig(configPath);
+    const config = loadAndValidateConfig(props?.configPath);
 
     // Apply default tags
     cdk.Tags.of(this).add('Service', 'domain-redirector');
@@ -98,7 +100,7 @@ export class RedirectStack extends cdk.Stack {
     const domainId = domainLogicalId(config.domain);
 
     // Look up the hosted zone
-    const hostedZone = this.lookupHostedZone(config.domain);
+    const hostedZone = this.lookupHostedZone(config.hostedZone);
 
     // Create ACM certificate
     const certificate = this.createCertificate(domainId, config.domain, hostedZone);
@@ -122,39 +124,21 @@ export class RedirectStack extends cdk.Stack {
   }
 
   /**
-   * Look up the Route 53 hosted zone for a domain.
-   * Walks up the domain hierarchy to find the appropriate zone, caching
-   * results so multiple domains in the same zone reuse a single lookup.
+   * Look up a Route 53 hosted zone by its exact name, caching results so
+   * domains in the same zone share one lookup. The zone comes from the
+   * group's `hostedZone` setting, or the domain itself by default.
    */
-  private lookupHostedZone(domain: string): route53.IHostedZone {
-    const hierarchy = getDomainHierarchy(domain);
-
-    // Try each level of the domain hierarchy
-    for (const zoneName of hierarchy) {
-      // Check cache first
-      if (this.hostedZoneCache.has(zoneName)) {
-        return this.hostedZoneCache.get(zoneName)!;
-      }
-
-      // Try to look up the zone
-      try {
-        const zone = route53.HostedZone.fromLookup(this, `Zone${sanitizeLogicalId(zoneName)}`, {
-          domainName: zoneName,
-        });
-
-        // Cache for future lookups
-        this.hostedZoneCache.set(zoneName, zone);
-        return zone;
-      } catch {
-        // Zone not found at this level, try parent
-        continue;
-      }
+  private lookupHostedZone(zoneName: string): route53.IHostedZone {
+    const cached = this.hostedZoneCache.get(zoneName);
+    if (cached) {
+      return cached;
     }
 
-    throw new Error(
-      `No Route 53 hosted zone found for ${domain}. ` +
-      `Please ensure a hosted zone exists for this domain or one of its parent domains.`
-    );
+    const zone = route53.HostedZone.fromLookup(this, `Zone${sanitizeLogicalId(zoneName)}`, {
+      domainName: zoneName,
+    });
+    this.hostedZoneCache.set(zoneName, zone);
+    return zone;
   }
 
   /**

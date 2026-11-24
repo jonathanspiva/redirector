@@ -10,24 +10,24 @@ phases:
       nodejs: 24
     commands:
       - echo "Installing dependencies..."
-      - cd cdk && npm ci
+      - cd "$CODEBUILD_SRC_DIR/cdk" && npm ci
 
   pre_build:
     commands:
       - echo "Running security audit..."
-      - cd cdk && npm audit --audit-level=high || echo "Security audit found vulnerabilities - review before deploying to production"
+      - cd "$CODEBUILD_SRC_DIR/cdk" && npm audit --omit=dev --audit-level=high
       - echo "Running unit tests..."
-      - cd cdk && npm test
+      - cd "$CODEBUILD_SRC_DIR/cdk" && npm test
       - echo "Running pre-flight checks..."
-      - cd cdk && npm run preflight -- ../redirects.yaml
+      - cd "$CODEBUILD_SRC_DIR/cdk" && npm run preflight -- ../redirects.yaml
 
   build:
     commands:
       - echo "Deploying with CDK..."
-      - cd cdk && npm run deploy
+      - cd "$CODEBUILD_SRC_DIR/cdk" && npm run deploy
       - echo "Running post-deployment smoke tests..."
       # Non-blocking: freshly created domains can take time to propagate (DNS up to 48h)
-      - cd cdk && npm run smoke-test -- ../redirects.yaml || echo "Smoke tests reported failures - new domains may still be propagating"
+      - cd "$CODEBUILD_SRC_DIR/cdk" && npm run smoke-test -- ../redirects.yaml || echo "Smoke tests reported failures - new domains may still be propagating"
       - echo "Build complete"
 
 artifacts:

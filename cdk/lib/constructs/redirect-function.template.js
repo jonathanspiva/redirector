@@ -8,7 +8,7 @@
  */
 
 var config = {
-  target: '{{TARGET}}',
+  target: {{TARGET}},
   statusCode: {{STATUS_CODE}},
   preservePath: {{PRESERVE_PATH}},
   preserveQuery: {{PRESERVE_QUERY}}

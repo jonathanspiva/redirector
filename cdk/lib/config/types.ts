@@ -25,6 +25,14 @@ export interface RedirectGroup {
 
   /** Domains to skip during smoke testing */
   skipTest?: string[];
+
+  /**
+   * Route 53 hosted zone that holds this group's domains.
+   * Defaults to each domain itself (wildcards stripped), which covers apex
+   * domains like example.com and *.example.com. Set it for subdomains such
+   * as blog.example.com that live in the example.com zone.
+   */
+  hostedZone?: string;
 }
 
 /**
@@ -70,6 +78,9 @@ export interface ResolvedDomainConfig {
 
   /** Whether to skip smoke testing for this domain */
   skipTest: boolean;
+
+  /** Route 53 hosted zone name that holds this domain */
+  hostedZone: string;
 
   /** Original redirect group description */
   description?: string;

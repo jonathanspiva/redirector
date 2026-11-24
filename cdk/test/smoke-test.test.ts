@@ -46,6 +46,7 @@ describe('testDomain', () => {
     preservePath: true,
     preserveQuery: true,
     skipTest: false,
+    hostedZone: 'old.example.com',
     ...overrides,
   });
 

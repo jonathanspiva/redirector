@@ -87,8 +87,8 @@ See the full [Setup Guide](#setup-guide) below.
 │                                                                          │
 │  CloudFront Functions (one per destination):                            │
 │  ┌──────────────────────────────────────────────────────────────────┐   │
-│  │  redirect-to-brand-a           →  https://www.brand-a.com        │   │
-│  │  redirect-to-brand-a-acquired  →  https://www.brand-a.com/acquired│  │
+│  │  redirector-www-brand-a-com           →  https://www.brand-a.com │   │
+│  │  redirector-www-brand-a-com-acquired  →  .../acquired            │   │
 │  └──────────────────────────────────────────────────────────────────┘   │
 │                                                                          │
 │  Per-domain resources:                                                   │
@@ -98,7 +98,7 @@ See the full [Setup Guide](#setup-guide) below.
 │  │  │  CloudFront  │  │     ACM      │  │   Route 53   │              │ │
 │  │  │ Distribution │──│ Certificate  │  │   A/AAAA     │              │ │
 │  │  └──────┬───────┘  └──────────────┘  └──────────────┘              │ │
-│  │         └──────────▶  redirect-to-brand-a function                  │ │
+│  │         └──────────▶  redirector-www-brand-a-com                   │ │
 │  └────────────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -123,7 +123,7 @@ This architecture creates a dedicated CloudFront distribution for each source do
 Each unique destination target gets its own CloudFront Function:
 
 ```javascript
-// Auto-generated: redirect-to-brand-a.js
+// Generated for function redirector-www-brand-a-com
 function handler(event) {
   var url = "https://www.brand-a.com";
   url += event.request.uri;  // Preserve path
@@ -167,7 +167,7 @@ settings:
 
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `target` | Yes | - | Destination URL (must be HTTPS) |
+| `target` | Yes | - | Destination URL (HTTPS, no query string or fragment; the request's path and query are appended) |
 | `type` | Yes | - | `permanent` (301) or `temporary` (302) |
 | `domains` | Yes | - | Array of source domains |
 | `description` | No | - | Documentation comment |
@@ -175,6 +175,7 @@ settings:
 | `preserveQuery` | No | `true` | Append original query string |
 | `active` | No | `true` | Set `false` to disable without removing |
 | `skipTest` | No | - | Domains to skip in smoke tests |
+| `hostedZone` | No | each domain | Route 53 zone holding the group's domains. Set it for subdomains (see below) |
 
 ### Wildcard Domains
 
@@ -187,6 +188,23 @@ domains:
 ```
 
 **Note:** Wildcards don't match the apex domain. Include both for full coverage.
+
+### Subdomains
+
+By default each domain is looked up in a Route 53 hosted zone of the same name
+(`*.old-brand.com` uses the `old-brand.com` zone). To redirect a subdomain that
+lives in its parent's zone, set `hostedZone` on the group:
+
+```yaml
+- target: "https://www.brand-a.com/blog"
+  type: permanent
+  hostedZone: old-brand.com
+  domains:
+    - blog.old-brand.com
+    - news.old-brand.com
+```
+
+`npm run preflight` reports which zone to use if you leave it out.
 
 ---
 
@@ -271,9 +289,23 @@ EOF
 ```
 my-redirects/           # Your private repo
 ├── redirects.yaml      # Your private config
-├── package.json        # Wrapper scripts
 └── tool/               # Submodule (this public repo)
 ```
+
+Deploy from the submodule. When no config path is given, the app uses
+`REDIRECTS_CONFIG` if set, otherwise the first `redirects.yaml` it finds in the
+working directory or up to two directories above it, so
+`my-redirects/redirects.yaml` is picked up from `tool/cdk`:
+
+```bash
+cd tool/cdk
+npm ci
+cp .env.example .env    # set CDK_DEFAULT_ACCOUNT
+npx cdk deploy RedirectStack
+```
+
+If the tool repo is ever private, CodeBuild needs credentials to clone the
+submodule; keeping it public avoids that.
 
 ---
 
@@ -392,15 +424,22 @@ CloudFront pricing is usage-based, not per-distribution:
 
 ### Pre-Deployment Validation
 
-Before infrastructure changes, CodeBuild validates `redirects.yaml`:
+`redirects.yaml` is validated whenever the app synthesizes (and by
+`npm run validate -- <path>`):
 
 | Check | Example Error |
 |-------|---------------|
 | Valid YAML syntax | `line 12: mapping values not allowed here` |
-| Target is HTTPS URL | `must be HTTPS URL, got "http://..."` |
+| Target is HTTPS with no query or fragment | `must be HTTPS, got "http://..."` |
 | Valid domain format | `invalid domain format "not a domain"` |
-| No duplicate domains | `duplicate domain "old.com"` |
-| Route 53 hosted zone exists | `no hosted zone found for "old.com"` |
+| No duplicate domains (case-insensitive) | `duplicate domain "old.com"` |
+| Domains belong to `hostedZone` | `"blog.other.com" is not in hosted zone "old.com"` |
+| Groups sharing a target agree on settings | `target "..." has settings that conflict with redirects[0]` |
+
+Before deploying, the pipeline runs `npm run preflight`, which checks AWS for
+problems that would fail mid-deploy: a missing hosted zone, existing A/AAAA
+records, or the domain already being on another CloudFront distribution. It
+warns by default; set `PREFLIGHT_MODE=fail` to block the deploy instead.
 
 ### Post-Deployment Smoke Tests
 
@@ -447,9 +486,10 @@ npm test -- validator.test.ts
 
 ### "No Hosted Zone Found" Error
 
-The domain isn't in Route 53. Options:
-1. Create a hosted zone in Route 53 and update registrar NS records
-2. Migrate DNS to Route 53
+The stack looks for a hosted zone named exactly like the domain (or the
+group's `hostedZone`). Options:
+1. For a subdomain in its parent's zone, set `hostedZone` on the group
+2. Create a hosted zone in Route 53 and update the registrar's NS records
 
 ### Certificate Pending Validation
 

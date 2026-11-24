@@ -88,7 +88,9 @@ export function generateFunctionCode(props: RedirectFunctionProps): string {
   const template = loadTemplate();
 
   return template
-    .replace('{{TARGET}}', props.target)
+    // JSON.stringify yields a safely quoted JS string literal; the function
+    // replacer stops `$&`-style patterns in the target from being expanded.
+    .replace('{{TARGET}}', () => JSON.stringify(props.target))
     .replace('{{STATUS_CODE}}', String(props.statusCode))
     .replace('{{PRESERVE_PATH}}', String(props.preservePath))
     .replace('{{PRESERVE_QUERY}}', String(props.preserveQuery));
