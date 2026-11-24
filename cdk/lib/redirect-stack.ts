@@ -1,4 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
+import { Validations } from 'aws-cdk-lib';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as route53 from 'aws-cdk-lib/aws-route53';
@@ -9,7 +10,7 @@ import { loadAndValidateConfig } from './config/validator';
 import { getAllDomainConfigs, getUniqueTargets } from './config/parser';
 import { ResolvedDomainConfig } from './config/types';
 import { RedirectFunction } from './constructs/redirect-function';
-import { getDomainHierarchy, sanitizeLogicalId } from './utils/domain';
+import { domainLogicalId, getDomainHierarchy, sanitizeLogicalId } from './utils/domain';
 
 export interface RedirectStackProps extends cdk.StackProps {
   /** Optional path to the redirects.yaml configuration file */
@@ -55,6 +56,23 @@ export class RedirectStack extends cdk.Stack {
     for (const domainConfig of domainConfigs) {
       this.createDomainResources(domainConfig);
     }
+
+    this.acknowledgeNagRules();
+  }
+
+  /**
+   * Acknowledge cdk-nag rules that don't apply to redirect-only distributions.
+   * The CloudFront Function answers every request; there is no content or reachable origin.
+   */
+  private acknowledgeNagRules(): void {
+    const acknowledgements: Array<[string, string]> = [
+      ['AwsSolutions-CFR1', 'Redirect-only distribution serves no content, so geo restrictions add nothing.'],
+      ['AwsSolutions-CFR2', 'Redirect-only distribution serves no content; WAF would add per-ACL cost with no protected resource.'],
+      ['AwsSolutions-CFR3', 'Access logs for redirect-only distributions are not needed; smoke tests verify behavior.'],
+    ];
+    for (const [id, reason] of acknowledgements) {
+      Validations.of(this).acknowledge({ id, reason });
+    }
   }
 
   /**
@@ -77,7 +95,7 @@ export class RedirectStack extends cdk.Stack {
    * Create all resources for a single domain.
    */
   private createDomainResources(config: ResolvedDomainConfig): void {
-    const domainId = sanitizeLogicalId(config.domain);
+    const domainId = domainLogicalId(config.domain);
 
     // Look up the hosted zone
     const hostedZone = this.lookupHostedZone(config.domain);
@@ -174,7 +192,7 @@ export class RedirectStack extends cdk.Stack {
         }],
         cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
       },
-      minimumProtocolVersion: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
+      minimumProtocolVersion: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2025,
       comment: `Redirect ${domain}`,
     });
   }
@@ -188,12 +206,10 @@ export class RedirectStack extends cdk.Stack {
     hostedZone: route53.IHostedZone,
     distribution: cloudfront.Distribution
   ): void {
-    const recordName = domain;
-
     // A record (IPv4)
     new route53.ARecord(this, `ARecord${domainId}`, {
       zone: hostedZone,
-      recordName,
+      recordName: domain,
       target: route53.RecordTarget.fromAlias(
         new route53Targets.CloudFrontTarget(distribution)
       ),
@@ -202,7 +218,7 @@ export class RedirectStack extends cdk.Stack {
     // AAAA record (IPv6)
     new route53.AaaaRecord(this, `AAAARecord${domainId}`, {
       zone: hostedZone,
-      recordName,
+      recordName: domain,
       target: route53.RecordTarget.fromAlias(
         new route53Targets.CloudFrontTarget(distribution)
       ),
@@ -225,6 +241,7 @@ class DummyOrigin implements cloudfront.IOrigin {
         id: 'dummy-origin',
         customOriginConfig: {
           originProtocolPolicy: 'https-only',
+          originSslProtocols: ['TLSv1.2'],
           httpPort: 80,
           httpsPort: 443,
         },

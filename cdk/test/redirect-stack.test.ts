@@ -135,7 +135,7 @@ describe('RedirectStack', () => {
       template.hasResourceProperties('AWS::CloudFront::Distribution', {
         DistributionConfig: {
           ViewerCertificate: {
-            MinimumProtocolVersion: 'TLSv1.2_2021',
+            MinimumProtocolVersion: 'TLSv1.2_2025',
           },
         },
       });
@@ -455,6 +455,43 @@ describe('RedirectStack with wildcard domains', () => {
       });
     } finally {
       fs.unlinkSync(wildcardConfigPath);
+    }
+  });
+
+  it('should allow a wildcard alongside its apex domain', () => {
+    const configPath = path.join(__dirname, 'test-wildcard-apex.yaml');
+    fs.writeFileSync(configPath, yaml.stringify({
+      redirects: [
+        {
+          target: 'https://www.example.com',
+          type: 'permanent',
+          domains: ['old-brand.com', '*.old-brand.com'],
+        },
+      ],
+    }));
+
+    try {
+      const app = new cdk.App({
+        context: {
+          'hosted-zone:account=123456789012:domainName=old-brand.com:region=us-east-1': {
+            Id: '/hostedzone/ZWILDCARD',
+            Name: 'old-brand.com.',
+          },
+        },
+      });
+      const stack = new RedirectStack(app, 'WildcardApexStack', {
+        configPath,
+        env: { account: '123456789012', region: 'us-east-1' },
+      });
+      const template = Template.fromStack(stack);
+
+      template.resourceCountIs('AWS::CertificateManager::Certificate', 2);
+      template.resourceCountIs('AWS::CloudFront::Distribution', 2);
+      template.resourceCountIs('AWS::Route53::RecordSet', 4);
+      template.hasResourceProperties('AWS::Route53::RecordSet', { Name: '*.old-brand.com.', Type: 'A' });
+      template.hasResourceProperties('AWS::Route53::RecordSet', { Name: 'old-brand.com.', Type: 'A' });
+    } finally {
+      fs.unlinkSync(configPath);
     }
   });
 });

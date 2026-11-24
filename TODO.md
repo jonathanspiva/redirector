@@ -6,6 +6,10 @@ No active items.
 
 ## Later
 
+- [ ] Try `cdk deploy --express` (CloudFormation Express mode, announced 2026-06-30): returns once config is applied instead of waiting for CloudFront propagation. Rollback is off by default, so pair it with smoke tests or `disableRollback=false`.
+- [ ] Consider consolidating per-domain distributions/certs (100 aliases per distribution; ACM certs up to 100 names on request). Fewer resources, but a shared cert is reissued on every domain change and cost savings are near zero.
+- [ ] If the CodeStar connection is ever recreated, its ARN uses the `codeconnections` prefix; grant `codeconnections:UseConnection` too.
+
 ### Handle DNS conflicts gracefully (Future Enhancement)
 
 Additional options to consider if pre-flight warnings aren't sufficient:
@@ -24,6 +28,15 @@ never happened and the pre-deploy smoke run was wasted build time. The pipeline
 now deploys with CDK directly, then runs smoke tests once (non-blocking).
 
 ## Done
+
+### Maintenance refresh (Nov 2026)
+
+- [x] Node 24 runtime (CodeBuild images dropped Node 20), CDK 2.278, TypeScript 5.9, Jest 30
+- [x] Migrated cdk-nag v2 to v3 (`Validations.of().acknowledge()`); nag test now actually fails on violations
+- [x] Fixed logical ID collision when a wildcard and its apex are both configured
+- [x] Pinned dummy origin to TLSv1.2 (AwsSolutions-CFR5)
+- [x] CloudFront viewer security policy TLSv1.2_2021 -> TLSv1.2_2025
+- [x] Added SECURITY.md, CONTRIBUTING.md, GitHub Actions CI, issue templates, monthly grouped Dependabot
 
 ### Pre-flight checks for DNS conflicts
 

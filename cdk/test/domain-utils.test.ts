@@ -1,4 +1,4 @@
-import { stripWildcard, getDomainHierarchy, sanitizeLogicalId } from '../lib/utils/domain';
+import { stripWildcard, getDomainHierarchy, sanitizeLogicalId, domainLogicalId } from '../lib/utils/domain';
 
 describe('domain utilities', () => {
   describe('stripWildcard', () => {
@@ -71,6 +71,20 @@ describe('domain utilities', () => {
 
     it('should handle URLs', () => {
       expect(sanitizeLogicalId('https://example.com/path')).toBe('httpsexamplecompath');
+    });
+  });
+
+  describe('domainLogicalId', () => {
+    it('should match sanitizeLogicalId for non-wildcard domains', () => {
+      expect(domainLogicalId('my-domain.com')).toBe('mydomaincom');
+    });
+
+    it('should prefix wildcard domains', () => {
+      expect(domainLogicalId('*.my-domain.com')).toBe('Wildcardmydomaincom');
+    });
+
+    it('should not collide for a wildcard and its apex', () => {
+      expect(domainLogicalId('*.example.com')).not.toBe(domainLogicalId('example.com'));
     });
   });
 });

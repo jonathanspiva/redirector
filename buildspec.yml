@@ -2,12 +2,12 @@ version: 0.2
 
 env:
   variables:
-    NODE_VERSION: "20"
+    NODE_VERSION: "24"
 
 phases:
   install:
     runtime-versions:
-      nodejs: 20
+      nodejs: 24
     commands:
       - echo "Installing dependencies..."
       - cd cdk && npm ci

@@ -1,0 +1,36 @@
+name: Bug report
+description: Something isn't working
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please don't paste real AWS account IDs, ARNs, or credentials. Replace your
+        domains with `example.com`-style placeholders if you'd rather not share them.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead. Include error text from `cdk synth`/`deploy`, preflight, or smoke tests.
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant redirects.yaml snippet
+      render: yaml
+  - type: dropdown
+    id: deploy
+    attributes:
+      label: How are you deploying?
+      options:
+        - Included PipelineStack (CodePipeline)
+        - cdk deploy from a workstation
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Redirector commit
+      placeholder: "abc1234"

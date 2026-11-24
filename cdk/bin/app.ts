@@ -3,7 +3,6 @@ import 'source-map-support/register';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as cdk from 'aws-cdk-lib';
-import { Aspects } from 'aws-cdk-lib';
 import { AwsSolutionsChecks } from 'cdk-nag';
 import { RedirectStack } from '../lib/redirect-stack';
 import { PipelineStack } from '../lib/pipeline-stack';
@@ -90,6 +89,6 @@ if (connectionArn && githubOwner && githubRepo) {
 }
 
 // Apply cdk-nag security checks (AWS Solutions rule pack)
-Aspects.of(app).add(new AwsSolutionsChecks({ verbose: true }));
+cdk.Validations.of(app).addPlugins(new AwsSolutionsChecks(app, { verbose: true }));
 
 app.synth();

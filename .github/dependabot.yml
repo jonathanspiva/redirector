@@ -1,32 +1,22 @@
 version: 2
 updates:
-  # NPM dependencies for CDK infrastructure
-  - package-ecosystem: "npm"
-    directory: "/cdk"
+  - package-ecosystem: github-actions
+    directory: /
     schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 10
-    labels:
-      - "dependencies"
-      - "security"
+      interval: monthly
     commit-message:
       prefix: "deps"
     groups:
-      # Group AWS CDK updates together
-      aws-cdk:
-        patterns:
-          - "aws-cdk*"
-          - "@aws-cdk/*"
-      # Group testing dependencies
-      testing:
-        patterns:
-          - "jest*"
-          - "@types/jest"
-          - "ts-jest"
-      # Group TypeScript tooling
-      typescript:
-        patterns:
-          - "typescript"
-          - "ts-node"
-          - "@types/node"
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /cdk
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "deps"
+    groups:
+      # Minor and patch updates land as one PR; majors get their own
+      npm-minor:
+        update-types: ["minor", "patch"]

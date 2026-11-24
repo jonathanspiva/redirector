@@ -61,3 +61,20 @@ export function sanitizeLogicalId(input: string): string {
     .replace(/[^a-zA-Z0-9]/g, '')
     .substring(0, 64);
 }
+
+/**
+ * Build a logical ID fragment for a domain's resources.
+ *
+ * Wildcards get a "Wildcard" prefix so `*.example.com` and `example.com` can be
+ * configured side by side without colliding (both sanitize to `examplecom`).
+ * Non-wildcard IDs are unchanged, so existing deployments keep their resources.
+ *
+ * @example
+ * domainLogicalId('example.com')   // 'examplecom'
+ * domainLogicalId('*.example.com') // 'Wildcardexamplecom'
+ */
+export function domainLogicalId(domain: string): string {
+  return domain.startsWith('*.')
+    ? sanitizeLogicalId(`Wildcard${stripWildcard(domain)}`)
+    : sanitizeLogicalId(domain);
+}

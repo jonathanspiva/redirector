@@ -1,9 +1,10 @@
 # Domain Redirector
 
+[![CI](https://github.com/jonathanspiva/redirector/actions/workflows/ci.yml/badge.svg)](https://github.com/jonathanspiva/redirector/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.4-blue.svg)](https://www.typescriptlang.org/)
-[![AWS CDK](https://img.shields.io/badge/AWS%20CDK-2.170+-orange.svg)](https://aws.amazon.com/cdk/)
-[![Node.js](https://img.shields.io/badge/Node.js-20+-green.svg)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
+[![AWS CDK](https://img.shields.io/badge/AWS%20CDK-2.278+-orange.svg)](https://aws.amazon.com/cdk/)
+[![Node.js](https://img.shields.io/badge/Node.js-24+-green.svg)](https://nodejs.org/)
 [![Security: cdk-nag](https://img.shields.io/badge/Security-cdk--nag-blueviolet.svg)](https://github.com/cdklabs/cdk-nag)
 [![AWS Well-Architected](https://img.shields.io/badge/AWS-Well--Architected-FF9900.svg)](https://aws.amazon.com/architecture/well-architected/)
 
@@ -194,7 +195,7 @@ domains:
 ### Prerequisites
 
 - AWS CLI configured with credentials for your account
-- Node.js 20+
+- Node.js 24+
 - AWS CDK CLI (`npm install -g aws-cdk`)
 - **Source domains must have hosted zones in Route 53** (in the same account)
 
@@ -319,6 +320,7 @@ This project follows AWS security best practices and is validated against indust
 | **Encryption in Transit** | TLS 1.2+ enforced on all CloudFront distributions |
 | **S3 Security** | Public access blocked, versioning enabled, SSL enforced |
 | **Dependency Scanning** | npm audit in CI, Dependabot for automated updates |
+| **Vulnerability Reports** | See [SECURITY.md](SECURITY.md) |
 
 ### Compliance Alignment
 
@@ -457,25 +459,7 @@ ACM certificates require DNS validation. Ensure validation CNAME records exist i
 
 ## Contributing
 
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Run tests (`npm test`)
-5. Commit (`git commit -m 'Add amazing feature'`)
-6. Push (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
-
-### Development
-
-```bash
-cd cdk
-npm install
-npm run build    # Compile TypeScript
-npm test         # Run tests
-npx cdk synth    # Synthesize CloudFormation (checks cdk-nag)
-```
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and guidelines, and [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
 
 ---
 
