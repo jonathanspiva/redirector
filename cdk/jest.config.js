@@ -3,7 +3,9 @@ module.exports = {
   roots: ['<rootDir>/test'],
   testMatch: ['**/*.test.ts'],
   transform: {
-    '^.+\\.tsx?$': 'ts-jest'
+    // Transpile only: type-checking aws-cdk-lib in every worker exhausts memory on
+    // small build hosts. Types are checked separately with `tsc --noEmit`.
+    '^.+\\.tsx?$': ['ts-jest', { tsconfig: { isolatedModules: true } }]
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   collectCoverageFrom: [
